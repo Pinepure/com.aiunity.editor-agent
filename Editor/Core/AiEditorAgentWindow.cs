@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using UnityEditor;
@@ -12,6 +13,8 @@ namespace AiUnity.EditorAgent
     public sealed class AiEditorAgentWindow : EditorWindow
     {
         private static readonly string[] Tabs = { "Dashboard", "Tools", "Calls", "Logs", "Settings", "AGENT.md" };
+        private const float HeroWindowSeconds = 90f;
+        private const int HeroSampleCount = 56;
 
         private int tab;
         private Vector2 mainScroll;
@@ -32,6 +35,13 @@ namespace AiUnity.EditorAgent
         private bool settingsRequireToken;
         private bool settingsConfirmHighRisk;
         private double lastAutoRefresh;
+
+        private struct HeroHoverInfo
+        {
+            public bool valid;
+            public Vector2 point;
+            public AiToolCallEntry call;
+        }
 
         [MenuItem("Tools/AI Editor Agent/Control Center")]
         public static void Open()
@@ -78,45 +88,58 @@ namespace AiUnity.EditorAgent
 
         private void AutoRefreshLightweight()
         {
-            if (EditorApplication.timeSinceStartup - lastAutoRefresh < 1.0) return;
+            if (EditorApplication.timeSinceStartup - lastAutoRefresh < 0.18) return;
             lastAutoRefresh = EditorApplication.timeSinceStartup;
             Repaint();
         }
 
         private void DrawHero()
         {
-            Rect rect = GUILayoutUtility.GetRect(1, 112, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, Styles.heroBackground);
+            List<AiToolCallEntry> calls = AiEditorAgentState.GetToolCalls(90);
+            AiConsoleCounts counts = AiConsoleUtility.GetCounts();
+            AiToolCallEntry latestCall = calls.Count > 0 ? calls[calls.Count - 1] : null;
+            int recentErrors = 0;
+            long peakDurationMs = 0;
+            for (int i = 0; i < calls.Count; i++)
+            {
+                if (!calls[i].ok) recentErrors++;
+                if (calls[i].durationMs > peakDurationMs) peakDurationMs = calls[i].durationMs;
+            }
 
-            Rect accent = new Rect(rect.x, rect.y, 6, rect.height);
-            EditorGUI.DrawRect(accent, AiEditorApiServer.IsRunning ? Styles.green : Styles.red);
+            Rect rect = GUILayoutUtility.GetRect(1, 214, GUILayout.ExpandWidth(true));
+            DrawHeroBackground(rect);
 
-            Rect content = new Rect(rect.x + 18, rect.y + 14, rect.width - 36, rect.height - 22);
+            Rect chartRect = new Rect(rect.x + 18, rect.y + 84, rect.width - 296, rect.height - 122);
+            HeroHoverInfo hover = DrawHeroTelemetry(chartRect, calls);
+
+            Rect content = new Rect(rect.x + 22, rect.y + 16, rect.width - 286, 52);
             GUILayout.BeginArea(content);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.BeginVertical();
             GUILayout.Label("AI Unity Editor Agent", Styles.heroTitle);
-            GUILayout.Space(3);
-            GUILayout.Label("Local API service, auto-registered Editor tools, manifest discovery, prefab generation, compile diagnostics, and asset reference search.", Styles.heroSubTitle);
-            GUILayout.Space(8);
+            GUILayout.Space(2);
+            GUILayout.Label("Recent call activity and compiler state in a single live view. Hover points to inspect individual tool calls.", Styles.heroSubTitle);
+            GUILayout.EndArea();
+
+            Rect pillRow = new Rect(rect.x + 22, rect.y + 54, rect.width - 300, 22);
+            GUILayout.BeginArea(pillRow);
             EditorGUILayout.BeginHorizontal();
             DrawPill(AiEditorApiServer.IsRunning ? "SERVICE ONLINE" : "SERVICE OFFLINE", AiEditorApiServer.IsRunning ? Styles.green : Styles.red);
             DrawPill(EditorApplication.isCompiling ? "COMPILING" : "COMPILER IDLE", EditorApplication.isCompiling ? Styles.orange : Styles.green);
-            AiConsoleCounts counts = AiConsoleUtility.GetCounts();
-            DrawPill(counts.errorCount > 0 ? (counts.errorCount + " ERRORS") : "NO CONSOLE ERRORS", counts.errorCount > 0 ? Styles.red : Styles.green);
+            DrawPill(recentErrors > 0 ? (recentErrors + " FAILED CALLS") : "CALLS CLEAN", recentErrors > 0 ? Styles.red : Styles.teal);
+            DrawPill(counts.errorCount > 0 ? (counts.errorCount + " CONSOLE ERRORS") : "NO CONSOLE ERRORS", counts.errorCount > 0 ? Styles.red : Styles.green);
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
-
-            EditorGUILayout.BeginVertical(GUILayout.Width(260));
-            GUILayout.Label("Endpoint", Styles.smallMuted);
-            SelectableCopyLine(AiEditorAgentSettings.ServerUrl);
-            GUILayout.Space(6);
-            GUILayout.Label("Tools", Styles.smallMuted);
-            GUILayout.Label(AiToolRegistry.Count.ToString(), Styles.bigMetric);
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.EndHorizontal();
             GUILayout.EndArea();
+
+            Rect sideRect = new Rect(rect.xMax - 258, rect.y + 16, 236, rect.height - 32);
+            DrawHeroMetricGrid(sideRect, counts, calls.Count, peakDurationMs, latestCall);
+
+            Rect footerRect = new Rect(rect.x + 18, rect.yMax - 28, rect.width - 36, 18);
+            DrawHeroFooter(footerRect, peakDurationMs, latestCall);
+
+            if (hover.valid)
+            {
+                DrawHeroTooltip(rect, hover);
+            }
         }
 
         private void DrawToolbar()
@@ -189,6 +212,294 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.TextArea(manifestJson, Styles.codeArea, GUILayout.MinHeight(220));
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawHeroBackground(Rect rect)
+        {
+            int slices = 24;
+            for (int i = 0; i < slices; i++)
+            {
+                float t0 = i / (float)slices;
+                float t1 = (i + 1) / (float)slices;
+                float y = Mathf.Lerp(rect.y, rect.yMax, t0);
+                float height = Mathf.Lerp(rect.y, rect.yMax, t1) - y + 1f;
+                Color color = Color.Lerp(Styles.heroGradientTop, Styles.heroGradientBottom, t0);
+                EditorGUI.DrawRect(new Rect(rect.x, y, rect.width, height), color);
+            }
+
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 5f, rect.height), AiEditorApiServer.IsRunning ? Styles.green : Styles.red);
+            EditorGUI.DrawRect(new Rect(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.height - 2f), new Color(1f, 1f, 1f, 0.015f));
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), Styles.heroGrid);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1f), new Color(1f, 1f, 1f, 0.04f));
+        }
+
+        private HeroHoverInfo DrawHeroTelemetry(Rect rect, List<AiToolCallEntry> calls)
+        {
+            HeroHoverInfo hover = new HeroHoverInfo();
+            if (rect.width < 32f || rect.height < 24f) return hover;
+
+            Event current = Event.current;
+            float[] latencySamples = new float[HeroSampleCount];
+            float[] volumeSamples = new float[HeroSampleCount];
+            DateTime latestTime = DateTime.Now;
+            if (calls.Count > 0)
+            {
+                DateTime parsedLatest;
+                if (TryParseToolCallTime(calls[calls.Count - 1], out parsedLatest))
+                {
+                    latestTime = parsedLatest;
+                }
+            }
+            DateTime startTime = latestTime.AddSeconds(-HeroWindowSeconds);
+
+            for (int i = 0; i < calls.Count; i++)
+            {
+                DateTime callTime;
+                if (!TryParseToolCallTime(calls[i], out callTime))
+                {
+                    float fallbackOffset = Mathf.Lerp(0f, HeroWindowSeconds, calls.Count <= 1 ? 1f : i / (float)(calls.Count - 1));
+                    callTime = startTime.AddSeconds(fallbackOffset);
+                }
+
+                float normalizedTime = Mathf.Clamp01((float)(callTime - startTime).TotalSeconds / HeroWindowSeconds);
+                int sampleIndex = Mathf.Clamp(Mathf.RoundToInt(normalizedTime * (HeroSampleCount - 1)), 0, HeroSampleCount - 1);
+                float durationValue = Mathf.Clamp01(calls[i].durationMs / 900f);
+                latencySamples[sampleIndex] = Mathf.Max(latencySamples[sampleIndex], durationValue);
+                volumeSamples[sampleIndex] += calls[i].ok ? 1f : 1.45f;
+            }
+
+            float now = (float)EditorApplication.timeSinceStartup;
+            float maxVolume = 0f;
+            for (int i = 0; i < HeroSampleCount; i++)
+            {
+                if (volumeSamples[i] > maxVolume) maxVolume = volumeSamples[i];
+            }
+            if (maxVolume > 0.001f)
+            {
+                for (int i = 0; i < HeroSampleCount; i++)
+                {
+                    volumeSamples[i] = Mathf.Clamp01(volumeSamples[i] / maxVolume);
+                }
+            }
+
+            for (int i = 0; i < HeroSampleCount; i++)
+            {
+                float phase = now * 1.15f + i * 0.18f;
+                float idle = 0.045f + Mathf.Sin(phase) * 0.008f + Mathf.Sin(phase * 0.58f) * 0.006f;
+                latencySamples[i] = Mathf.Clamp01(Mathf.Max(latencySamples[i], idle));
+            }
+
+            SmoothSamples(latencySamples, 3);
+            SmoothSamples(volumeSamples, 2);
+
+            float left = rect.x + 2f;
+            float right = rect.xMax - 2f;
+            float top = rect.y + 6f;
+            float bottom = rect.yMax - 8f;
+            float height = bottom - top;
+            float step = (right - left) / (HeroSampleCount - 1);
+
+            Handles.BeginGUI();
+            Handles.color = Styles.heroGrid;
+            for (int i = 0; i <= 3; i++)
+            {
+                float y = Mathf.Lerp(top, bottom, i / 3f);
+                Handles.DrawLine(new Vector3(left, y), new Vector3(right, y));
+            }
+            for (int i = 0; i < HeroSampleCount; i += 8)
+            {
+                float x = left + step * i;
+                Handles.DrawLine(new Vector3(x, top), new Vector3(x, bottom));
+            }
+
+            Vector3[] trafficLine = new Vector3[HeroSampleCount];
+            Vector3[] mainLine = new Vector3[HeroSampleCount];
+            Vector3[] fill = new Vector3[HeroSampleCount + 2];
+            fill[0] = new Vector3(left, bottom, 0f);
+            for (int i = 0; i < HeroSampleCount; i++)
+            {
+                float x = left + step * i;
+                float trafficY = Mathf.Lerp(bottom - 2f, top + height * 0.48f, Mathf.Clamp01(volumeSamples[i] * 0.75f));
+                float amplitude = Mathf.Clamp01(latencySamples[i] * 0.74f + volumeSamples[i] * 0.18f + 0.04f);
+                float y = Mathf.Lerp(bottom - 2f, top + 4f, amplitude);
+
+                trafficLine[i] = new Vector3(x, trafficY, 0f);
+                mainLine[i] = new Vector3(x, y, 0f);
+                fill[i + 1] = mainLine[i];
+            }
+            fill[fill.Length - 1] = new Vector3(right, bottom, 0f);
+
+            Handles.color = new Color(Styles.teal.r, Styles.teal.g, Styles.teal.b, 0.10f);
+            Handles.DrawAAConvexPolygon(fill);
+            Handles.color = new Color(Styles.teal.r, Styles.teal.g, Styles.teal.b, 0.20f);
+            Handles.DrawAAPolyLine(6f, mainLine);
+            Handles.color = Styles.teal;
+            Handles.DrawAAPolyLine(2.25f, mainLine);
+            Handles.color = new Color(Styles.blueSoft.r, Styles.blueSoft.g, Styles.blueSoft.b, 0.85f);
+            Handles.DrawAAPolyLine(1.5f, trafficLine);
+
+            int startMarker = Mathf.Max(0, calls.Count - 12);
+            for (int i = startMarker; i < calls.Count; i++)
+            {
+                AiToolCallEntry call = calls[i];
+                DateTime callTime;
+                if (!TryParseToolCallTime(call, out callTime))
+                {
+                    float fallbackOffset = Mathf.Lerp(0f, HeroWindowSeconds, calls.Count <= 1 ? 1f : i / (float)(calls.Count - 1));
+                    callTime = startTime.AddSeconds(fallbackOffset);
+                }
+
+                float normalizedTime = Mathf.Clamp01((float)(callTime - startTime).TotalSeconds / HeroWindowSeconds);
+                float x = Mathf.Lerp(left, right, normalizedTime);
+                float amplitude = Mathf.Clamp01(call.durationMs / 900f);
+                float y = Mathf.Lerp(bottom - 2f, top + 4f, Mathf.Clamp01(amplitude * 0.74f + 0.10f));
+                float pulse = 1f + Mathf.Sin(now * 3.2f + i * 0.45f) * 0.10f;
+                float radius = (call.ok ? 2.7f : 3.5f) * pulse;
+                Color markerColor = call.ok ? Styles.teal : Styles.red;
+
+                Handles.color = new Color(markerColor.r, markerColor.g, markerColor.b, 0.14f);
+                Handles.DrawSolidDisc(new Vector3(x, y, 0f), Vector3.forward, radius + 2.1f);
+                Handles.color = markerColor;
+                Handles.DrawSolidDisc(new Vector3(x, y, 0f), Vector3.forward, radius);
+
+                if ((current.mousePosition - new Vector2(x, y)).sqrMagnitude <= 64f)
+                {
+                    hover.valid = true;
+                    hover.point = new Vector2(x, y);
+                    hover.call = call;
+                }
+            }
+            Handles.EndGUI();
+
+            GUI.Label(new Rect(rect.x + 2f, rect.y - 2f, 120f, 18f), "Latency curve", Styles.microLabel);
+            GUI.Label(new Rect(rect.xMax - 140f, rect.y - 2f, 140f, 18f), "Traffic overlay", Styles.microLabelRight);
+            return hover;
+        }
+
+        private void DrawHeroMetricGrid(Rect rect, AiConsoleCounts counts, int recentCallCount, long peakDurationMs, AiToolCallEntry latestCall)
+        {
+            float gap = 8f;
+            float cardWidth = (rect.width - gap) * 0.5f;
+            float cardHeight = (rect.height - gap) * 0.5f;
+
+            DrawHeroMetricCard(new Rect(rect.x, rect.y, cardWidth, cardHeight),
+                "Service",
+                AiEditorApiServer.IsRunning ? "Online" : "Offline",
+                AiEditorApiServer.IsRunning ? "localhost" : "service halted",
+                AiEditorApiServer.IsRunning ? Styles.green : Styles.red);
+
+            DrawHeroMetricCard(new Rect(rect.x + cardWidth + gap, rect.y, cardWidth, cardHeight),
+                "Manifest",
+                AiToolRegistry.Count.ToString(),
+                "tools registered",
+                Styles.blue);
+
+            string compileValue = counts.errorCount > 0
+                ? counts.errorCount + " err"
+                : (EditorApplication.isCompiling ? "Compiling" : "Idle");
+            string compileSubtitle = EditorApplication.isCompiling
+                ? "script reload"
+                : counts.warningCount + " warn";
+            DrawHeroMetricCard(new Rect(rect.x, rect.y + cardHeight + gap, cardWidth, cardHeight),
+                "Compile",
+                compileValue,
+                compileSubtitle,
+                counts.errorCount > 0 ? Styles.red : (EditorApplication.isCompiling ? Styles.orange : Styles.green));
+
+            string pulseValue = recentCallCount > 0 ? recentCallCount + " calls" : "No calls";
+            string pulseSubtitle = latestCall != null
+                ? ("peak " + FormatDuration(peakDurationMs))
+                : "awaiting traffic";
+            DrawHeroMetricCard(new Rect(rect.x + cardWidth + gap, rect.y + cardHeight + gap, cardWidth, cardHeight),
+                "Pulse",
+                pulseValue,
+                pulseSubtitle,
+                Styles.teal);
+        }
+
+        private void DrawHeroMetricCard(Rect rect, string title, string value, string subtitle, Color accent)
+        {
+            EditorGUI.DrawRect(rect, Styles.heroCardBackground);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 2f), accent);
+
+            float padding = 9f;
+            float contentWidth = rect.width - padding * 2f;
+            GUI.Label(new Rect(rect.x + padding, rect.y + 8f, contentWidth, 14f), title, Styles.microLabel);
+            GUI.Label(new Rect(rect.x + padding, rect.y + 24f, contentWidth, 24f), value, Styles.heroMetricValue);
+            GUI.Label(new Rect(rect.x + padding, rect.yMax - 20f, contentWidth, 14f), subtitle, Styles.heroMetricSubTitle);
+        }
+
+        private void DrawHeroFooter(Rect rect, long peakDurationMs, AiToolCallEntry latestCall)
+        {
+            float x = rect.x;
+            x = DrawFooterChip(new Rect(x, rect.y, 180f, rect.height), "Endpoint", "127.0.0.1:18777", Styles.blue);
+            if (latestCall != null)
+            {
+                x = DrawFooterChip(new Rect(x + 8f, rect.y, 240f, rect.height), "Latest", ShortenToolId(latestCall.toolId) + "  " + FormatDuration(latestCall.durationMs), latestCall.ok ? Styles.teal : Styles.red);
+                DrawFooterChip(new Rect(x + 8f, rect.y, 140f, rect.height), "Peak", FormatDuration(peakDurationMs), Styles.orange);
+            }
+            else
+            {
+                DrawFooterChip(new Rect(x + 8f, rect.y, 220f, rect.height), "Latest", "Awaiting first call", Styles.orange);
+            }
+            GUI.Label(new Rect(rect.xMax - 220f, rect.y, 220f, rect.height), "Hover points to inspect exact timing", Styles.microLabelRight);
+        }
+
+        private float DrawFooterChip(Rect rect, string label, string value, Color accent)
+        {
+            EditorGUI.DrawRect(rect, Styles.heroChipBackground);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 2f, rect.height), accent);
+            GUI.Label(new Rect(rect.x + 8f, rect.y + 1f, rect.width - 12f, rect.height - 2f), label + "  " + value, Styles.chipLabel);
+            return rect.xMax;
+        }
+
+        private void DrawHeroTooltip(Rect heroRect, HeroHoverInfo hover)
+        {
+            if (hover.call == null) return;
+
+            float width = 236f;
+            float height = 76f;
+            float x = Mathf.Clamp(hover.point.x + 14f, heroRect.x + 12f, heroRect.xMax - width - 12f);
+            float y = Mathf.Clamp(hover.point.y - height - 10f, heroRect.y + 12f, heroRect.yMax - height - 12f);
+            Rect rect = new Rect(x, y, width, height);
+            EditorGUI.DrawRect(rect, Styles.heroTooltipBackground);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 2f), hover.call.ok ? Styles.teal : Styles.red);
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, 16f), ShortenToolId(hover.call.toolId), Styles.tooltipTitle);
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 28f, rect.width - 20f, 16f), (hover.call.ok ? "ok" : "failed") + "  " + FormatDuration(hover.call.durationMs) + "  " + hover.call.time, Styles.monoSmall);
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 48f, rect.width - 20f, 22f), string.IsNullOrEmpty(hover.call.message) ? "No message" : hover.call.message, Styles.smallMuted);
+        }
+
+        private void SmoothSamples(float[] samples, int passes)
+        {
+            if (samples == null || samples.Length < 3 || passes <= 0) return;
+            float[] temp = new float[samples.Length];
+            for (int pass = 0; pass < passes; pass++)
+            {
+                Array.Copy(samples, temp, samples.Length);
+                for (int i = 1; i < samples.Length - 1; i++)
+                {
+                    samples[i] = temp[i - 1] * 0.2f + temp[i] * 0.6f + temp[i + 1] * 0.2f;
+                }
+            }
+        }
+
+        private bool TryParseToolCallTime(AiToolCallEntry call, out DateTime time)
+        {
+            time = DateTime.MinValue;
+            if (call == null || string.IsNullOrEmpty(call.time)) return false;
+            return DateTime.TryParseExact(call.time, "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
+        }
+
+        private string FormatDuration(long durationMs)
+        {
+            return durationMs >= 1000 ? (durationMs / 1000f).ToString("0.00", CultureInfo.InvariantCulture) + " s" : durationMs + " ms";
+        }
+
+        private string ShortenToolId(string toolId)
+        {
+            if (string.IsNullOrEmpty(toolId)) return "unknown";
+            if (toolId.Length <= 24) return toolId;
+            return toolId.Substring(0, 10) + "..." + toolId.Substring(toolId.Length - 10);
         }
 
         private void DrawTools()
@@ -622,11 +933,26 @@ namespace AiUnity.EditorAgent
             public static GUIStyle okLabel;
             public static GUIStyle warningLabel;
             public static GUIStyle errorLabel;
+            public static GUIStyle heroMetricValue;
+            public static GUIStyle heroMetricSubTitle;
+            public static GUIStyle microLabel;
+            public static GUIStyle microLabelRight;
+            public static GUIStyle heroChip;
+            public static GUIStyle chipLabel;
+            public static GUIStyle tooltipTitle;
             public static Color heroBackground;
+            public static Color heroGradientTop;
+            public static Color heroGradientBottom;
+            public static Color heroCardBackground;
+            public static Color heroChipBackground;
+            public static Color heroTooltipBackground;
+            public static Color heroGrid;
             public static Color green;
             public static Color red;
             public static Color orange;
             public static Color blue;
+            public static Color blueSoft;
+            public static Color teal;
 
             public static void Ensure()
             {
@@ -635,10 +961,18 @@ namespace AiUnity.EditorAgent
 
                 bool pro = EditorGUIUtility.isProSkin;
                 heroBackground = pro ? new Color(0.11f, 0.13f, 0.17f) : new Color(0.86f, 0.89f, 0.94f);
+                heroGradientTop = pro ? new Color(0.08f, 0.12f, 0.18f) : new Color(0.81f, 0.87f, 0.94f);
+                heroGradientBottom = pro ? new Color(0.06f, 0.08f, 0.11f) : new Color(0.90f, 0.93f, 0.97f);
+                heroCardBackground = pro ? new Color(0.10f, 0.14f, 0.20f, 0.88f) : new Color(1f, 1f, 1f, 0.78f);
+                heroChipBackground = pro ? new Color(0.08f, 0.11f, 0.16f, 0.92f) : new Color(1f, 1f, 1f, 0.84f);
+                heroTooltipBackground = pro ? new Color(0.08f, 0.11f, 0.16f, 0.96f) : new Color(1f, 1f, 1f, 0.98f);
+                heroGrid = pro ? new Color(0.44f, 0.55f, 0.66f, 0.12f) : new Color(0.20f, 0.30f, 0.38f, 0.10f);
                 green = new Color(0.15f, 0.68f, 0.38f);
                 red = new Color(0.88f, 0.24f, 0.24f);
                 orange = new Color(0.95f, 0.58f, 0.16f);
                 blue = new Color(0.24f, 0.49f, 0.90f);
+                blueSoft = new Color(0.41f, 0.70f, 1.00f, 0.95f);
+                teal = new Color(0.18f, 0.86f, 0.76f, 0.98f);
 
                 heroTitle = new GUIStyle(EditorStyles.boldLabel);
                 heroTitle.fontSize = 24;
@@ -663,6 +997,17 @@ namespace AiUnity.EditorAgent
 
                 bigMetric = new GUIStyle(EditorStyles.boldLabel);
                 bigMetric.fontSize = 22;
+
+                heroMetricValue = new GUIStyle(EditorStyles.boldLabel);
+                heroMetricValue.fontSize = 18;
+                heroMetricValue.wordWrap = false;
+                heroMetricValue.clipping = TextClipping.Clip;
+                heroMetricValue.normal.textColor = pro ? Color.white : new Color(0.07f, 0.10f, 0.14f);
+
+                heroMetricSubTitle = new GUIStyle(EditorStyles.label);
+                heroMetricSubTitle.wordWrap = false;
+                heroMetricSubTitle.clipping = TextClipping.Clip;
+                heroMetricSubTitle.normal.textColor = pro ? new Color(0.68f, 0.75f, 0.82f) : new Color(0.25f, 0.31f, 0.36f);
 
                 monoLabel = new GUIStyle(EditorStyles.label);
                 monoLabel.font = EditorStyles.textArea.font;
@@ -693,6 +1038,27 @@ namespace AiUnity.EditorAgent
                 highPill = new GUIStyle(EditorStyles.miniButton);
                 highPill.normal.textColor = red;
                 highPill.fontStyle = FontStyle.Bold;
+
+                microLabel = new GUIStyle(EditorStyles.miniLabel);
+                microLabel.normal.textColor = pro ? new Color(0.65f, 0.76f, 0.88f) : new Color(0.23f, 0.32f, 0.40f);
+                microLabel.fontStyle = FontStyle.Bold;
+                microLabel.wordWrap = false;
+                microLabel.clipping = TextClipping.Clip;
+
+                microLabelRight = new GUIStyle(microLabel);
+                microLabelRight.alignment = TextAnchor.MiddleRight;
+
+                heroChip = new GUIStyle(EditorStyles.helpBox);
+                heroChip.padding = new RectOffset(8, 10, 2, 2);
+                heroChip.margin = new RectOffset(0, 8, 0, 0);
+
+                chipLabel = new GUIStyle(EditorStyles.miniLabel);
+                chipLabel.normal.textColor = pro ? new Color(0.86f, 0.91f, 0.96f) : new Color(0.10f, 0.16f, 0.22f);
+                chipLabel.fontStyle = FontStyle.Bold;
+                chipLabel.alignment = TextAnchor.MiddleLeft;
+
+                tooltipTitle = new GUIStyle(EditorStyles.boldLabel);
+                tooltipTitle.normal.textColor = pro ? Color.white : new Color(0.08f, 0.10f, 0.14f);
 
                 selectedCard = new GUIStyle(EditorStyles.helpBox);
                 selectedCard.normal.background = Texture2D.grayTexture;
