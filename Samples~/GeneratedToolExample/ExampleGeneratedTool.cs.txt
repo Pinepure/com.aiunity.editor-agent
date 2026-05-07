@@ -1,0 +1,30 @@
+#if UNITY_EDITOR
+using System;
+using UnityEngine;
+using AiUnity.EditorAgent;
+
+namespace AiUnity.EditorAgent.Generated
+{
+    internal static class ExampleGeneratedTool
+    {
+        [Serializable]
+        private sealed class Args
+        {
+            public string message;
+        }
+
+        [AiTool(
+            "example.echo",
+            "Echoes a message back to the caller.",
+            @"{""type"":""object"",""properties"":{""message"":{""type"":""string""}}}",
+            @"{""type"":""object"",""properties"":{""message"":{""type"":""string""}}}"
+        )]
+        public static string Echo(string argsJson)
+        {
+            Args args = JsonUtility.FromJson<Args>(string.IsNullOrEmpty(argsJson) ? "{}" : argsJson);
+            string message = args == null ? string.Empty : args.message;
+            return "{\"message\":" + AiJson.Quote(message) + "}";
+        }
+    }
+}
+#endif
