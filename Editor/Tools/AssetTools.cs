@@ -16,6 +16,7 @@ namespace AiUnity.EditorAgent
             public string filter;
             public string[] folders;
             public int maxResults;
+            public int pageSize;
             public bool includePackages;
         }
 
@@ -46,6 +47,7 @@ namespace AiUnity.EditorAgent
             public string filter;
             public bool recursive;
             public int maxResults;
+            public int pageSize;
             public bool includePackages;
         }
 
@@ -54,6 +56,8 @@ namespace AiUnity.EditorAgent
         {
             public string path;
             public int maxChars;
+            public int offset;
+            public int length;
         }
 
         [AiTool(
@@ -70,41 +74,43 @@ namespace AiUnity.EditorAgent
 
         [AiTool(
             "asset.find",
-            "Searches project assets using Unity AssetDatabase.FindAssets filter syntax. Args: filter, folders, maxResults, includePackages.",
-            @"{""type"":""object"",""properties"":{""filter"":{""type"":""string""},""folders"":{""type"":""array""},""maxResults"":{""type"":""integer""},""includePackages"":{""type"":""boolean""}}}",
-            @"{""type"":""object"",""properties"":{""items"":{""type"":""array""},""totalFound"":{""type"":""integer""},""truncated"":{""type"":""boolean""}}}"
+            "Searches project assets using Unity filter syntax and returns the first page plus a resultHandle when more items are available. Args: filter, folders, maxResults, pageSize, includePackages.",
+            @"{""type"":""object"",""properties"":{""filter"":{""type"":""string""},""folders"":{""type"":""array""},""maxResults"":{""type"":""integer""},""pageSize"":{""type"":""integer""},""includePackages"":{""type"":""boolean""}}}",
+            @"{""type"":""object""}"
         )]
         public static string Find(string argsJson)
         {
             AssetFindArgs args = AiJson.FromJsonOrThrow<AssetFindArgs>(argsJson);
             if (args == null) args = new AssetFindArgs();
             string filter = args.filter ?? string.Empty;
-            int max = args.maxResults <= 0 ? 200 : Math.Min(args.maxResults, 5000);
+            int maxResults = args.maxResults <= 0 ? 200 : Math.Min(args.maxResults, 5000);
+            int pageSize = args.pageSize <= 0 ? 20 : Math.Min(args.pageSize, 100);
             string[] folders = NormalizeFolders(args.folders, args.includePackages);
             string[] guids = folders == null ? AssetDatabase.FindAssets(filter) : AssetDatabase.FindAssets(filter, folders);
 
-            StringBuilder sb = new StringBuilder();
-            sb.Append('{');
-            sb.Append("\"filter\":").Append(AiJson.Quote(filter)).Append(',');
-            sb.Append("\"totalFound\":").Append(AiJson.Number(guids.Length)).Append(',');
-            sb.Append("\"truncated\":").Append(AiJson.Bool(guids.Length > max)).Append(',');
-            sb.Append("\"items\":[");
-            int count = Math.Min(max, guids.Length);
-            for (int i = 0; i < count; i++)
+            int storedCount = Math.Min(maxResults, guids.Length);
+            List<string> items = new List<string>(storedCount);
+            for (int i = 0; i < storedCount; i++)
             {
-                if (i > 0) sb.Append(',');
                 string guid = guids[i];
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 Type type = AssetDatabase.GetMainAssetTypeAtPath(path);
-                sb.Append('{');
-                sb.Append("\"guid\":").Append(AiJson.Quote(guid)).Append(',');
-                sb.Append("\"path\":").Append(AiJson.Quote(path)).Append(',');
-                sb.Append("\"name\":").Append(AiJson.Quote(Path.GetFileNameWithoutExtension(path))).Append(',');
-                sb.Append("\"type\":").Append(AiJson.Quote(type == null ? string.Empty : type.FullName));
-                sb.Append('}');
+                items.Add("{\"guid\":" + AiJson.Quote(guid)
+                    + ",\"path\":" + AiJson.Quote(path)
+                    + ",\"name\":" + AiJson.Quote(Path.GetFileNameWithoutExtension(path))
+                    + ",\"type\":" + AiJson.Quote(type == null ? string.Empty : type.FullName)
+                    + "}");
             }
-            sb.Append("]}");
-            return sb.ToString();
+
+            string summary = "{"
+                + "\"filter\":" + AiJson.Quote(filter) + ","
+                + "\"folders\":" + AiJson.StringArray(folders) + ","
+                + "\"includePackages\":" + AiJson.Bool(args.includePackages) + ","
+                + "\"totalFound\":" + AiJson.Number(guids.Length) + ","
+                + "\"storedCount\":" + AiJson.Number(storedCount) + ","
+                + "\"truncated\":" + AiJson.Bool(guids.Length > maxResults)
+                + "}";
+            return AiResultResponseBuilder.BuildJsonItemsResult("asset.find", "items", items, summary, pageSize);
         }
 
         [AiTool(
@@ -125,9 +131,9 @@ namespace AiUnity.EditorAgent
 
         [AiTool(
             "asset.reverse_dependencies",
-            "Scans assets that reference targetPath. Args: targetPath, searchFolders, filter, recursive, maxResults, includePackages.",
-            @"{""type"":""object"",""properties"":{""targetPath"":{""type"":""string""},""searchFolders"":{""type"":""array""},""filter"":{""type"":""string""},""recursive"":{""type"":""boolean""},""maxResults"":{""type"":""integer""},""includePackages"":{""type"":""boolean""}}}",
-            @"{""type"":""object"",""properties"":{""references"":{""type"":""array""}}}"
+            "Scans assets that reference targetPath and returns the first page plus a resultHandle when more items are available. Args: targetPath, searchFolders, filter, recursive, maxResults, pageSize, includePackages.",
+            @"{""type"":""object"",""properties"":{""targetPath"":{""type"":""string""},""searchFolders"":{""type"":""array""},""filter"":{""type"":""string""},""recursive"":{""type"":""boolean""},""maxResults"":{""type"":""integer""},""pageSize"":{""type"":""integer""},""includePackages"":{""type"":""boolean""}}}",
+            @"{""type"":""object""}"
         )]
         public static string ReverseDependencies(string argsJson)
         {
@@ -138,7 +144,8 @@ namespace AiUnity.EditorAgent
             string targetGuid = AssetDatabase.AssetPathToGUID(targetPath);
             if (string.IsNullOrEmpty(targetGuid)) throw new Exception("Target asset not found: " + targetPath);
 
-            int max = args.maxResults <= 0 ? 200 : Math.Min(args.maxResults, 10000);
+            int maxResults = args.maxResults <= 0 ? 200 : Math.Min(args.maxResults, 10000);
+            int pageSize = args.pageSize <= 0 ? 20 : Math.Min(args.pageSize, 100);
             string filter = args.filter ?? string.Empty;
             string[] folders = NormalizeFolders(args.searchFolders, args.includePackages);
             string[] guids = folders == null ? AssetDatabase.FindAssets(filter) : AssetDatabase.FindAssets(filter, folders);
@@ -172,16 +179,20 @@ namespace AiUnity.EditorAgent
 
                 if (found)
                 {
-                    references.Add(candidatePath);
-                    if (references.Count >= max) break;
+                    references.Add(AiJson.Quote(candidatePath));
+                    if (references.Count >= maxResults) break;
                 }
             }
 
-            return "{\"targetPath\":" + AiJson.Quote(targetPath)
-                + ",\"targetGuid\":" + AiJson.Quote(targetGuid)
-                + ",\"scanned\":" + AiJson.Number(guids.Length)
-                + ",\"truncated\":" + AiJson.Bool(references.Count >= max && guids.Length > references.Count)
-                + ",\"references\":" + AiJson.StringArray(references) + "}";
+            string summary = "{"
+                + "\"targetPath\":" + AiJson.Quote(targetPath) + ","
+                + "\"targetGuid\":" + AiJson.Quote(targetGuid) + ","
+                + "\"filter\":" + AiJson.Quote(filter) + ","
+                + "\"searchFolders\":" + AiJson.StringArray(folders) + ","
+                + "\"scanned\":" + AiJson.Number(guids.Length) + ","
+                + "\"truncated\":" + AiJson.Bool(references.Count >= maxResults && guids.Length > references.Count)
+                + "}";
+            return AiResultResponseBuilder.BuildJsonItemsResult("asset.reverse_dependencies", "references", references, summary, pageSize);
         }
 
         [AiTool(
@@ -215,9 +226,9 @@ namespace AiUnity.EditorAgent
 
         [AiTool(
             "asset.read_text",
-            "Reads a text asset under Assets/ with a maximum character limit. Args: path, maxChars.",
-            @"{""type"":""object"",""properties"":{""path"":{""type"":""string""},""maxChars"":{""type"":""integer""}}}",
-            @"{""type"":""object"",""properties"":{""content"":{""type"":""string""}}}"
+            "Reads a text asset under Assets/ as a chunked response. Args: path, offset, length, maxChars.",
+            @"{""type"":""object"",""properties"":{""path"":{""type"":""string""},""offset"":{""type"":""integer""},""length"":{""type"":""integer""},""maxChars"":{""type"":""integer""}}}",
+            @"{""type"":""object""}"
         )]
         public static string ReadText(string argsJson)
         {
@@ -227,11 +238,21 @@ namespace AiUnity.EditorAgent
             if (!AiEditorAgentPaths.IsSafeAssetPath(path, true, null)) throw new Exception("Only safe paths under Assets/ are allowed.");
             string absolute = AiEditorAgentPaths.ToAbsolutePathFromAssetPath(path);
             if (!File.Exists(absolute)) throw new Exception("File not found: " + path);
-            int max = args.maxChars <= 0 ? 20000 : Math.Min(args.maxChars, 200000);
+
+            int readLimit = args.maxChars <= 0 ? 200000 : Math.Min(args.maxChars, 200000);
+            int chunkLength = args.length > 0 ? Math.Min(args.length, 32768) : (args.maxChars > 0 ? Math.Min(args.maxChars, 32768) : 4096);
+            int offset = Math.Max(0, args.offset);
+
             string text = File.ReadAllText(absolute, Encoding.UTF8);
-            bool truncated = text.Length > max;
-            if (truncated) text = text.Substring(0, max);
-            return "{\"path\":" + AiJson.Quote(path) + ",\"truncated\":" + AiJson.Bool(truncated) + ",\"content\":" + AiJson.Quote(text) + "}";
+            bool truncatedByReadLimit = text.Length > readLimit;
+            if (truncatedByReadLimit) text = text.Substring(0, readLimit);
+
+            string summary = "{"
+                + "\"path\":" + AiJson.Quote(path) + ","
+                + "\"readLimit\":" + AiJson.Number(readLimit) + ","
+                + "\"truncatedByReadLimit\":" + AiJson.Bool(truncatedByReadLimit)
+                + "}";
+            return AiResultResponseBuilder.BuildTextChunkResult("asset.read_text", text, summary, offset, chunkLength);
         }
 
         private static string[] NormalizeFolders(string[] folders, bool includePackages)

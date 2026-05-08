@@ -26,6 +26,21 @@ namespace AiUnity.EditorAgent
     [InitializeOnLoad]
     public static class AiEditorApiServer
     {
+        [Serializable]
+        private sealed class ManifestSearchArgs
+        {
+            public string query;
+            public int limit;
+            public string namespaceId;
+            public string bundleId;
+        }
+
+        [Serializable]
+        private sealed class DescribeManyArgs
+        {
+            public string[] ids;
+        }
+
         private static readonly object ServerLock = new object();
         private static readonly Queue<MainThreadJob> Jobs = new Queue<MainThreadJob>();
         private static HttpListener listener;
@@ -150,7 +165,7 @@ namespace AiUnity.EditorAgent
 
         public static string BuildManifestJson()
         {
-            return AiToolRegistry.BuildManifestJson(true);
+            return AiToolRegistry.BuildManifestFullJson(false, false);
         }
 
         public static string RegenerateToken()
@@ -236,7 +251,8 @@ namespace AiUnity.EditorAgent
 
                 if (path == "health" && context.Request.HttpMethod == "GET")
                 {
-                    Send(context, 200, "{\"ok\":true,\"service\":\"AI Unity Editor Agent\",\"version\":" + AiJson.Quote(AiEditorAgentPaths.ServiceVersion) + ",\"serverRunning\":" + AiJson.Bool(IsRunning) + ",\"requiresToken\":" + AiJson.Bool(requireTokenCached) + "}");
+                    AiApiResult result = EnqueueAndWait(BuildHealthResult, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
                     return;
                 }
 
@@ -246,12 +262,50 @@ namespace AiUnity.EditorAgent
                     return;
                 }
 
-                if (path == "manifest" && context.Request.HttpMethod == "GET")
+                if ((path == "manifest" || path == "manifest/summary") && context.Request.HttpMethod == "GET")
                 {
-                    AiApiResult result = EnqueueAndWait(delegate
-                    {
-                        return new AiApiResult(200, AiToolRegistry.BuildManifestJson(true));
-                    }, toolTimeoutMsCached);
+                    string detail = context.Request.QueryString["detail"];
+                    AiApiResult result = EnqueueAndWait(
+                        string.Equals(detail, "full", StringComparison.OrdinalIgnoreCase) ? BuildManifestFullResult : BuildManifestSummaryResult,
+                        toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path == "manifest/full" && context.Request.HttpMethod == "GET")
+                {
+                    AiApiResult result = EnqueueAndWait(BuildManifestFullResult, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path == "manifest/bundles" && context.Request.HttpMethod == "GET")
+                {
+                    AiApiResult result = EnqueueAndWait(BuildManifestBundlesResult, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path.StartsWith("manifest/bundle/", StringComparison.Ordinal) && context.Request.HttpMethod == "GET")
+                {
+                    string bundleId = Uri.UnescapeDataString(path.Substring("manifest/bundle/".Length));
+                    AiApiResult result = EnqueueAndWait(delegate { return BuildManifestBundleResult(bundleId); }, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path == "manifest/search" && context.Request.HttpMethod == "POST")
+                {
+                    string body = ReadBody(context.Request);
+                    AiApiResult result = EnqueueAndWait(delegate { return BuildManifestSearchResult(body); }, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path == "tool/describe_many" && context.Request.HttpMethod == "POST")
+                {
+                    string body = ReadBody(context.Request);
+                    AiApiResult result = EnqueueAndWait(delegate { return BuildToolDescribeManyResult(body); }, toolTimeoutMsCached);
                     Send(context, result.statusCode, result.json);
                     return;
                 }
@@ -260,6 +314,25 @@ namespace AiUnity.EditorAgent
                 {
                     AiApiResult result = EnqueueAndWait(ReadAgentManual, toolTimeoutMsCached);
                     Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path == "agent/brief" && context.Request.HttpMethod == "GET")
+                {
+                    AiApiResult result = EnqueueAndWait(BuildAgentBriefResult, toolTimeoutMsCached);
+                    Send(context, result.statusCode, result.json);
+                    return;
+                }
+
+                if (path.StartsWith("result/", StringComparison.Ordinal) && context.Request.HttpMethod == "GET")
+                {
+                    string handleId = Uri.UnescapeDataString(path.Substring("result/".Length));
+                    int offset = ReadQueryInt(context.Request, "offset", 0);
+                    int limit = ReadQueryInt(context.Request, "limit", 0);
+                    int statusCode;
+                    string json;
+                    AiResultHandleStore.TryBuildPageJson(handleId, offset, limit, out statusCode, out json);
+                    Send(context, statusCode, json);
                     return;
                 }
 
@@ -350,6 +423,62 @@ namespace AiUnity.EditorAgent
             }
         }
 
+        private static AiApiResult BuildHealthResult()
+        {
+            return new AiApiResult(200, AiProtocolUtility.BuildHealthJson(true, IsRunning, requireTokenCached));
+        }
+
+        private static AiApiResult BuildManifestSummaryResult()
+        {
+            return new AiApiResult(200, AiToolRegistry.BuildManifestSummaryJson(false, false));
+        }
+
+        private static AiApiResult BuildManifestFullResult()
+        {
+            return new AiApiResult(200, AiToolRegistry.BuildManifestFullJson(false, false));
+        }
+
+        private static AiApiResult BuildManifestBundlesResult()
+        {
+            return new AiApiResult(200, AiToolRegistry.BuildManifestBundleIndexJson(false, false));
+        }
+
+        private static AiApiResult BuildManifestBundleResult(string bundleId)
+        {
+            string json;
+            if (!AiToolRegistry.TryBuildManifestBundleJson(bundleId, false, false, out json))
+            {
+                return new AiApiResult(404, AiJson.Error("Unknown manifest bundle: " + (bundleId ?? string.Empty)));
+            }
+            return new AiApiResult(200, json);
+        }
+
+        private static AiApiResult BuildManifestSearchResult(string body)
+        {
+            ManifestSearchArgs args = AiJson.FromJsonOrThrow<ManifestSearchArgs>(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+            if (args != null && !string.IsNullOrEmpty(args.bundleId) && !AiToolRegistry.HasBundle(args.bundleId))
+            {
+                return new AiApiResult(404, AiJson.Error("Unknown manifest bundle: " + args.bundleId));
+            }
+            return new AiApiResult(200, AiToolRegistry.BuildManifestSearchJson(
+                args == null ? string.Empty : args.query,
+                args == null ? 0 : args.limit,
+                args == null ? string.Empty : args.namespaceId,
+                args == null ? string.Empty : args.bundleId,
+                false));
+        }
+
+        private static AiApiResult BuildToolDescribeManyResult(string body)
+        {
+            DescribeManyArgs args = AiJson.FromJsonOrThrow<DescribeManyArgs>(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+            return new AiApiResult(200, AiToolRegistry.BuildToolDescribeManyJson(args == null ? null : args.ids, false, false));
+        }
+
+        private static AiApiResult BuildAgentBriefResult()
+        {
+            return new AiApiResult(200, AiProtocolUtility.BuildAgentBriefJson(true));
+        }
+
         private static AiApiResult InvokeTool(string toolId, string argsJson)
         {
             Stopwatch sw = Stopwatch.StartNew();
@@ -425,6 +554,13 @@ namespace AiUnity.EditorAgent
             {
                 return new AiApiResult(500, AiJson.Error(e.Message));
             }
+        }
+
+        private static int ReadQueryInt(HttpListenerRequest request, string key, int defaultValue)
+        {
+            string raw = request.QueryString[key];
+            int value;
+            return int.TryParse(raw, out value) ? value : defaultValue;
         }
 
         private static string ReadBody(HttpListenerRequest request)

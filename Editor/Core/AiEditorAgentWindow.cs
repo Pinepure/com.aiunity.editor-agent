@@ -181,8 +181,12 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Connection", Styles.sectionTitle);
             KeyValue("Base URL", AiEditorAgentSettings.ServerUrl);
-            KeyValue("Manifest", AiEditorAgentSettings.ServerUrl + "/manifest");
+            KeyValue("Manifest summary", AiEditorAgentSettings.ServerUrl + "/manifest");
+            KeyValue("Manifest full", AiEditorAgentSettings.ServerUrl + "/manifest/full");
+            KeyValue("Manifest search", AiEditorAgentSettings.ServerUrl + "/manifest/search");
+            KeyValue("Describe many", AiEditorAgentSettings.ServerUrl + "/tool/describe_many");
             KeyValue("Call", AiEditorAgentSettings.ServerUrl + "/call/{toolId}");
+            KeyValue("Agent brief", AiEditorAgentSettings.ServerUrl + "/agent/brief");
             KeyValue("Token file", AiEditorAgentPaths.TokenPath);
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Copy Token", GUILayout.Width(110))) Copy(AiEditorApiServer.Token);
@@ -195,19 +199,20 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Recommended AI Flow", Styles.sectionTitle);
             GUILayout.Label("1. GET /health", Styles.body);
-            GUILayout.Label("2. GET /manifest", Styles.body);
-            GUILayout.Label("3. Check compile.status", Styles.body);
-            GUILayout.Label("4. Call existing tools", Styles.body);
-            GUILayout.Label("5. If missing, install a generated tool with tool.upsert_script", Styles.body);
-            GUILayout.Label("6. Wait for compile.status.isCompiling == false", Styles.body);
-            GUILayout.Label("7. GET /manifest again", Styles.body);
+            GUILayout.Label("2. Reuse cached capabilities while manifestHash is unchanged", Styles.body);
+            GUILayout.Label("3. POST /manifest/search or GET /manifest/bundle/{id}", Styles.body);
+            GUILayout.Label("4. POST /tool/describe_many before unfamiliar calls", Styles.body);
+            GUILayout.Label("5. Call existing tools and page large results through /result/{handleId}", Styles.body);
+            GUILayout.Label("6. If missing, install a generated tool with tool.upsert_script", Styles.body);
+            GUILayout.Label("7. Wait for compile.status.isCompiling == false", Styles.body);
+            GUILayout.Label("8. Refresh search or GET /manifest/full only as fallback", Styles.body);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(12);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Label("Current Manifest Snapshot", Styles.sectionTitle);
+            GUILayout.Label("Current Full Manifest Snapshot", Styles.sectionTitle);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Copy Manifest", GUILayout.Width(120))) Copy(manifestJson);
             EditorGUILayout.EndHorizontal();
@@ -801,7 +806,7 @@ namespace AiUnity.EditorAgent
         {
             AiToolRegistry.Rebuild();
             tools = AiToolRegistry.GetToolsCopy();
-            manifestJson = AiToolRegistry.BuildManifestJson(false);
+            manifestJson = AiToolRegistry.BuildManifestFullJson(false, true);
             LoadAgentText();
             if (string.IsNullOrEmpty(selectedToolId) && tools.Count > 0) selectedToolId = tools[0].id;
         }

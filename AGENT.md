@@ -2,7 +2,7 @@
 
 This document is the built-in operating manual for AI agents that control Unity through the AI Unity Editor Agent package.
 
-The agent must treat `/manifest` as the source of truth. Never assume a tool exists. Always read the latest manifest before planning or executing Unity operations.
+The agent must treat `manifestHash` as the capability cache key and must prefer search, bundle, describe, and paged result flows over repeatedly loading the full manifest.
 
 ## 1. Connection
 
@@ -24,17 +24,52 @@ Required request header unless disabled by the user in the Control Center:
 X-Unity-Ai-Token: <token>
 ```
 
-Health check:
+Health and discovery metadata:
 
 ```http
 GET /health
 ```
 
-Read current manifest:
+Lightweight manifest summary:
 
 ```http
 GET /manifest
 X-Unity-Ai-Token: <token>
+```
+
+Full manifest fallback:
+
+```http
+GET /manifest/full
+X-Unity-Ai-Token: <token>
+```
+
+Manifest search:
+
+```http
+POST /manifest/search
+X-Unity-Ai-Token: <token>
+Content-Type: application/json
+
+{"query":"find prefab dependencies","limit":6}
+```
+
+Focused capability bundles:
+
+```http
+GET /manifest/bundles
+GET /manifest/bundle/asset-analysis
+X-Unity-Ai-Token: <token>
+```
+
+Describe exact tool schemas:
+
+```http
+POST /tool/describe_many
+X-Unity-Ai-Token: <token>
+Content-Type: application/json
+
+{"ids":["asset.find","asset.dependencies"]}
 ```
 
 Call a tool:
@@ -47,7 +82,21 @@ Content-Type: application/json
 {...tool arguments...}
 ```
 
-Read this manual through HTTP:
+Read next pages or text chunks from a result handle:
+
+```http
+GET /result/{handleId}?offset=0&limit=20
+X-Unity-Ai-Token: <token>
+```
+
+Read the concise brief:
+
+```http
+GET /agent/brief
+X-Unity-Ai-Token: <token>
+```
+
+Read the full manual:
 
 ```http
 GET /agent
@@ -59,16 +108,25 @@ X-Unity-Ai-Token: <token>
 For every Unity task:
 
 1. Call `GET /health`.
-2. Call `GET /manifest`.
-3. Check `compile.status` before executing complex operations.
-4. Use an existing tool if the manifest contains one that fits the task.
-5. If no suitable tool exists, generate a new Editor tool script and install it with `tool.upsert_script`.
-6. Wait until `compile.status.isCompiling` is `false`.
-7. Call `GET /manifest` again.
-8. Call the new or existing tool.
-9. Validate the result and inspect `compile.errors` or `service.log_recent` when something fails.
+2. Cache the current `manifestHash`.
+3. Reuse cached capability knowledge while `manifestHash` stays unchanged.
+4. Prefer `POST /manifest/search` or `GET /manifest/bundle/{id}` to narrow candidate tools.
+5. Call `POST /tool/describe_many` for exact schemas before using unfamiliar tools.
+6. Call the selected tool through `POST /call/{toolId}`.
+7. If a tool returns `resultHandle`, page additional data through `GET /result/{handleId}` instead of re-running the tool with larger limits.
+8. Use `GET /manifest/full` only when search, bundles, and describe-many are insufficient.
+9. If no suitable tool exists, generate a new Editor tool script with `tool.upsert_script`, wait for compile completion, then repeat discovery.
 
-## 3. Tool method implementation contract
+## 3. Protocol priorities
+
+- Prefer `GET /health` over repeatedly loading manifests.
+- Prefer `GET /manifest` over `GET /manifest/full`.
+- Prefer `POST /manifest/search` over scanning all tools mentally.
+- Prefer `POST /tool/describe_many` over reading schemas for tools you will not call.
+- Prefer `GET /result/{handleId}` over asking a tool to return larger and larger payloads.
+- Prefer `compile.snapshot` and `compile.errors_summary` before requesting verbose console entries.
+
+## 4. Tool method implementation contract
 
 All AI-generated tools must follow this C# shape:
 
@@ -120,203 +178,164 @@ Rules:
 - Generated tools should use the namespace `AiUnity.EditorAgent.Generated`.
 - Generated scripts must be installed through `tool.upsert_script`; do not write outside `Assets/Editor/AiUnityEditorAgent/GeneratedTools/`.
 
-## 4. Standard response envelope
-
-Tool call success:
-
-```json
-{
-  "ok": true,
-  "toolId": "asset.find",
-  "durationMs": 12,
-  "result": {
-    "items": []
-  }
-}
-```
-
-Tool call failure:
-
-```json
-{
-  "ok": false,
-  "toolId": "asset.find",
-  "error": "Human-readable error message"
-}
-```
-
 ## 5. Manifest conventions
 
-`GET /manifest` returns:
+`GET /manifest` returns the lightweight summary:
 
 ```json
 {
-  "protocolVersion": "1.0",
-  "serviceVersion": "0.1.1",
-  "unityVersion": "...",
-  "projectPath": "...",
-  "serverUrl": "http://127.0.0.1:18777",
-  "isCompiling": false,
-  "hasCompileErrors": false,
+  "protocolVersion": "2.0",
+  "serviceVersion": "0.2.0",
+  "manifestHash": "7c3d...",
+  "toolCount": 35,
+  "namespaces": [
+    { "id": "asset", "count": 7 }
+  ],
   "tools": [
     {
       "id": "asset.find",
-      "description": "Searches project assets.",
-      "argsSchemaJson": "{...}",
-      "returnSchemaJson": "{...}",
+      "namespaceId": "asset",
+      "description": "Searches project assets...",
       "danger": "low",
-      "requiresConfirmation": false,
-      "declaringType": "...",
-      "methodName": "..."
+      "requiresConfirmation": false
     }
   ]
 }
 ```
 
-The schema fields are JSON encoded strings. Parse them before presenting parameter forms to the user.
+`GET /manifest/full` returns the full fallback manifest with `argsSchemaJson`, `returnSchemaJson`, and source metadata.
 
-## 6. Built-in high-value tools
+`POST /tool/describe_many` returns exact schemas for the requested tool ids:
+
+```json
+{
+  "manifestHash": "7c3d...",
+  "requestedCount": 2,
+  "returnedCount": 2,
+  "missingIds": [],
+  "tools": [
+    {
+      "id": "asset.find",
+      "namespaceId": "asset",
+      "argsSchemaJson": "{...}",
+      "returnSchemaJson": "{...}"
+    }
+  ]
+}
+```
+
+Only load full schemas for tools you actually plan to call.
+
+## 6. Search and bundle conventions
+
+Use manifest search for open-ended tasks:
+
+```json
+{
+  "query": "inspect prefab dependencies",
+  "limit": 6
+}
+```
+
+Use bundle loading for focused workflows:
+
+- `asset-analysis`
+- `scene-editing`
+- `prefab-authoring`
+- `tool-authoring`
+- `service-diagnostics`
+
+Search results include `score` and `whyMatched`. Use those to shortlist tools before calling `describe_many`.
+
+## 7. Result handle conventions
+
+Large tool responses may return this shape:
+
+```json
+{
+  "summary": {
+    "source": "asset.find",
+    "totalFound": 183
+  },
+  "returned": 20,
+  "pageSize": 20,
+  "total": 183,
+  "hasMore": true,
+  "resultHandle": "abcd1234",
+  "items": []
+}
+```
+
+When `resultHandle` is present, continue with:
+
+```http
+GET /result/abcd1234?offset=20&limit=20
+```
+
+Text readers such as `asset.read_text` may return chunked `content` plus `resultHandle`.
+
+## 8. Built-in high-value tools
 
 Common tools available in a fresh install:
 
-- `system.health`: full main-thread health information.
-- `manifest.get`: returns the same manifest as `GET /manifest`.
-- `compile.status`: checks whether Unity is compiling, updating, playing, or has console errors.
-- `compile.errors`: returns recent captured errors and warnings.
-- `console.clear`: clears the Unity Console through internal reflection when available.
-- `asset.refresh`: refreshes the AssetDatabase.
-- `asset.find`: searches assets by Unity filter syntax, for example `t:Prefab Player`.
-- `asset.dependencies`: returns assets referenced by a target asset.
-- `asset.reverse_dependencies`: scans assets that reference a target asset.
-- `asset.guid_to_path`: converts GUID to path.
-- `asset.path_to_guid`: converts path to GUID.
-- `asset.read_text`: reads text assets under `Assets/` with a size limit.
-- `prefab.create_from_json`: creates a prefab from a JSON hierarchy manifest.
-- `selection.get`: returns current Unity selection.
-- `scene.create_empty`: creates an empty GameObject in the active scene.
-- `scene.create_primitive`: creates a Unity primitive in the active scene.
-- `tool.upsert_script`: installs or updates an AI-generated Editor tool script.
-- `tool.list_generated`: lists generated tool scripts.
-- `tool.delete_generated`: deletes one generated tool script after confirmation.
-- `tool.get_template`: returns a safe generated tool template.
-- `service.log_recent`: returns internal service logs.
-- `service.call_recent`: returns recent tool calls.
-
-## 7. Prefab JSON manifest
-
-Call:
-
-```http
-POST /call/prefab.create_from_json
-```
-
-Example body:
-
-```json
-{
-  "prefabPath": "Assets/Prefabs/AI_Player.prefab",
-  "overwrite": true,
-  "root": {
-    "name": "AI_Player",
-    "primitive": "Capsule",
-    "transform": {
-      "position": [0, 1, 0],
-      "rotationEuler": [0, 0, 0],
-      "scale": [1, 1, 1]
-    },
-    "components": [
-      {
-        "type": "UnityEngine.Rigidbody",
-        "json": "{\"mass\":1.5}"
-      }
-    ],
-    "children": [
-      {
-        "name": "Visual",
-        "primitive": "Cube",
-        "transform": {
-          "position": [0, 0.5, 0],
-          "scale": [0.5, 0.5, 0.5]
-        }
-      }
-    ]
-  }
-}
-```
-
-Supported primitive values:
-
-```text
-Empty, Cube, Sphere, Capsule, Cylinder, Plane, Quad
-```
-
-Component rules:
-
-- `type` may be a full type name such as `UnityEngine.Rigidbody`.
-- If the component already exists, the tool patches it.
-- If the component does not exist, the tool adds it when possible.
-- `json` is passed to `EditorJsonUtility.FromJsonOverwrite`.
-
-## 8. Asset reference search
-
-Find prefabs:
-
-```json
-{
-  "filter": "t:Prefab",
-  "folders": ["Assets"],
-  "maxResults": 100
-}
-```
-
-Dependencies of an asset:
-
-```json
-{
-  "path": "Assets/Prefabs/AI_Player.prefab",
-  "recursive": true
-}
-```
-
-Find assets that reference a texture or prefab:
-
-```json
-{
-  "targetPath": "Assets/Art/Player.png",
-  "searchFolders": ["Assets"],
-  "filter": "",
-  "recursive": true,
-  "maxResults": 200
-}
-```
+- `system.health`
+- `manifest.get`
+- `manifest.get_summary`
+- `manifest.search`
+- `manifest.list_bundles`
+- `manifest.get_bundle`
+- `tool.describe_many`
+- `agent.get_brief`
+- `agent.get_manual`
+- `compile.status`
+- `compile.snapshot`
+- `compile.errors`
+- `compile.errors_summary`
+- `console.clear`
+- `asset.refresh`
+- `asset.find`
+- `asset.dependencies`
+- `asset.reverse_dependencies`
+- `asset.guid_to_path`
+- `asset.path_to_guid`
+- `asset.read_text`
+- `prefab.create_from_json`
+- `selection.get`
+- `scene.create_empty`
+- `scene.create_primitive`
+- `tool.upsert_script`
+- `tool.list_generated`
+- `tool.delete_generated`
+- `tool.get_template`
+- `service.log_recent`
+- `service.call_recent`
 
 ## 9. Compile diagnostics
 
-Before modifying assets or scripts:
+Prefer this order:
 
-```json
-{}
-```
-
-Call `compile.status`. If `isCompiling` is true, wait and retry. If `hasCompileErrors` is true, call `compile.errors`.
+1. `compile.snapshot`
+2. `compile.errors_summary`
+3. `compile.errors` with `includeStackTrace=false`
+4. `compile.errors` with `includeStackTrace=true` only when stack details are needed
 
 After calling `tool.upsert_script`:
 
 1. Poll `compile.status` until `isCompiling == false`.
-2. If `hasCompileErrors == true`, call `compile.errors`.
-3. Fix the generated script with another `tool.upsert_script` call.
-4. Reload `/manifest`.
+2. If `hasCompileErrors == true`, call `compile.snapshot`.
+3. If the summary is insufficient, call `compile.errors_summary` or paged `compile.errors`.
+4. Resume discovery through `GET /health` and `POST /manifest/search`.
 
 ## 10. Security rules for AI agents
 
-- Never request a tool call that is not present in the manifest.
+- Never request a tool call that is not present in the latest discovery results or full manifest.
 - Never bypass `requiresConfirmation`.
 - Never write files outside generated tool folders.
 - Never create tools that execute shell commands unless the user explicitly approves and the tool is marked high risk.
 - Never read or expose secrets from project files unless the user explicitly asks.
 - Prefer small, single-purpose tools over large unrestricted tools.
 - Include argument schemas and return schemas for every generated tool.
-- After adding or changing tools, refresh and re-read the manifest.
+- After adding or changing tools, re-check `manifestHash` before assuming old capability caches still apply.
 
 ## 11. Minimal curl examples
 
@@ -326,10 +345,30 @@ Read token:
 TOKEN=$(cat Library/AiUnityEditorAgent/token.txt)
 ```
 
-Manifest:
+Health:
 
 ```bash
-curl -H "X-Unity-Ai-Token: $TOKEN" http://127.0.0.1:18777/manifest
+curl -H "X-Unity-Ai-Token: $TOKEN" http://127.0.0.1:18777/health
+```
+
+Search candidate tools:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Unity-Ai-Token: $TOKEN" \
+  -d '{"query":"find prefab dependencies","limit":6}' \
+  http://127.0.0.1:18777/manifest/search
+```
+
+Describe exact schemas:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "X-Unity-Ai-Token: $TOKEN" \
+  -d '{"ids":["asset.find","asset.dependencies"]}' \
+  http://127.0.0.1:18777/tool/describe_many
 ```
 
 Call asset search:
@@ -338,16 +377,13 @@ Call asset search:
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "X-Unity-Ai-Token: $TOKEN" \
-  -d '{"filter":"t:Prefab","folders":["Assets"],"maxResults":20}' \
+  -d '{"filter":"t:Prefab","folders":["Assets"],"maxResults":100,"pageSize":20}' \
   http://127.0.0.1:18777/call/asset.find
 ```
 
-Create prefab:
+Read the next page from a result handle:
 
 ```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
-  -d '{"prefabPath":"Assets/Prefabs/AI_Cube.prefab","overwrite":true,"root":{"name":"AI_Cube","primitive":"Cube"}}' \
-  http://127.0.0.1:18777/call/prefab.create_from_json
+curl -H "X-Unity-Ai-Token: $TOKEN" \
+  "http://127.0.0.1:18777/result/<HANDLE>?offset=20&limit=20"
 ```
