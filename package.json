@@ -2,7 +2,7 @@
   "name": "com.aiunity.editor-agent",
   "version": "0.1.0",
   "displayName": "AI Unity Editor Agent",
-  "description": "A lightweight local API service for Unity Editor automation with auto-registered AI tools, manifest discovery, prefab creation from JSON, compile diagnostics, asset reference search, AGENT.md instructions, and an Editor control center.",
+  "description": "A Unity Editor-only, manifest-driven local tool runtime that lets AI discover, call, and extend Unity-native capabilities for assets, scenes, prefabs, diagnostics, and editor automation.",
   "unity": "2020.3",
   "author": {
     "name": "AI Unity Editor Agent"
