@@ -370,8 +370,7 @@ namespace AiUnity.EditorAgent
                     }
                 }
 
-                bool shouldConfirm = entry.info.requiresConfirmation;
-                if (entry.info.danger == "high" && AiEditorAgentSettings.ConfirmHighRiskTools) shouldConfirm = true;
+                bool shouldConfirm = AiEditorAgentSettings.ShouldConfirmTool(entry.info);
 
                 if (shouldConfirm)
                 {

@@ -152,7 +152,7 @@ Tool call failure:
 ```json
 {
   "protocolVersion": "1.0",
-  "serviceVersion": "0.1.0",
+  "serviceVersion": "0.1.1",
   "unityVersion": "...",
   "projectPath": "...",
   "serverUrl": "http://127.0.0.1:18777",

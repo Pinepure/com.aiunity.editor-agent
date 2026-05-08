@@ -82,6 +82,7 @@ namespace AiUnity.EditorAgent
                 + "\"autoStart\":" + AiJson.Bool(AiEditorAgentSettings.AutoStart) + ","
                 + "\"requireToken\":" + AiJson.Bool(AiEditorAgentSettings.RequireToken) + ","
                 + "\"confirmHighRiskTools\":" + AiJson.Bool(AiEditorAgentSettings.ConfirmHighRiskTools) + ","
+                + "\"fullAccessEnabled\":" + AiJson.Bool(AiEditorAgentSettings.FullAccessEnabled) + ","
                 + "\"port\":" + AiJson.Number(AiEditorAgentSettings.Port) + ","
                 + "\"serverUrl\":" + AiJson.Quote(AiEditorAgentSettings.ServerUrl) + ","
                 + "\"tokenPath\":" + AiJson.Quote(AiEditorAgentPaths.TokenPath) + ","

@@ -40,6 +40,12 @@ namespace AiUnity.EditorAgent
             set { EditorPrefs.SetBool(KeyPrefix + "ConfirmHighRiskTools", value); }
         }
 
+        public static bool FullAccessEnabled
+        {
+            get { return EditorPrefs.GetBool(KeyPrefix + "FullAccessEnabled", false); }
+            set { EditorPrefs.SetBool(KeyPrefix + "FullAccessEnabled", value); }
+        }
+
         public static string ServerUrl
         {
             get { return "http://127.0.0.1:" + Port; }
@@ -83,6 +89,14 @@ namespace AiUnity.EditorAgent
             {
                 return string.Empty;
             }
+        }
+
+        public static bool ShouldConfirmTool(AiToolInfo info)
+        {
+            if (FullAccessEnabled) return false;
+            if (info == null) return false;
+            if (info.requiresConfirmation) return true;
+            return info.danger == "high" && ConfirmHighRiskTools;
         }
     }
 }

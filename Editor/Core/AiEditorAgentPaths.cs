@@ -10,7 +10,7 @@ namespace AiUnity.EditorAgent
     internal static class AiEditorAgentPaths
     {
         public const string PackageName = "com.aiunity.editor-agent";
-        public const string ServiceVersion = "0.1.0";
+        public const string ServiceVersion = "0.1.1";
         public const string ProtocolVersion = "1.0";
         public const string GeneratedToolsFolder = "Assets/Editor/AiUnityEditorAgent/GeneratedTools";
         public const string LibraryFolderRelative = "Library/AiUnityEditorAgent";

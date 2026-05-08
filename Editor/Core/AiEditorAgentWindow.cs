@@ -34,6 +34,7 @@ namespace AiUnity.EditorAgent
         private bool settingsAutoStart;
         private bool settingsRequireToken;
         private bool settingsConfirmHighRisk;
+        private bool settingsFullAccess;
         private double lastAutoRefresh;
 
         private struct HeroHoverInfo
@@ -553,7 +554,7 @@ namespace AiUnity.EditorAgent
                 toolResultJson = string.Empty;
             }
             GUILayout.FlexibleSpace();
-            DrawTinyDanger(info.danger, info.requiresConfirmation);
+            DrawTinyDanger(info.danger, AiEditorAgentSettings.ShouldConfirmTool(info));
             EditorGUILayout.EndHorizontal();
             GUILayout.Label(info.description, Styles.smallMuted);
             EditorGUILayout.EndVertical();
@@ -564,7 +565,7 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label(info.id, Styles.sectionTitle);
             GUILayout.FlexibleSpace();
-            DrawTinyDanger(info.danger, info.requiresConfirmation);
+            DrawTinyDanger(info.danger, AiEditorAgentSettings.ShouldConfirmTool(info));
             if (GUILayout.Button("Copy ID", GUILayout.Width(80))) Copy(info.id);
             if (GUILayout.Button("Copy curl", GUILayout.Width(90))) CopyCurl(info.id, toolArgsJson);
             EditorGUILayout.EndHorizontal();
@@ -574,7 +575,7 @@ namespace AiUnity.EditorAgent
             GUILayout.Space(8);
             KeyValue("Declaring type", info.declaringType);
             KeyValue("Method", info.methodName);
-            KeyValue("Requires confirmation", info.requiresConfirmation ? "Yes" : "No");
+            KeyValue("Confirmation required now", AiEditorAgentSettings.ShouldConfirmTool(info) ? "Yes" : "No");
 
             GUILayout.Space(10);
             GUILayout.Label("Arguments JSON", Styles.subSectionTitle);
@@ -678,7 +679,15 @@ namespace AiUnity.EditorAgent
             GUILayout.Label("Service Settings", Styles.sectionTitle);
             settingsAutoStart = EditorGUILayout.ToggleLeft("Auto-start service when Unity loads or scripts reload", settingsAutoStart);
             settingsRequireToken = EditorGUILayout.ToggleLeft("Require X-Unity-Ai-Token for protected endpoints", settingsRequireToken);
-            settingsConfirmHighRisk = EditorGUILayout.ToggleLeft("Always confirm high-risk tools", settingsConfirmHighRisk);
+            settingsFullAccess = EditorGUILayout.ToggleLeft("Enable full access mode (skip all tool confirmation dialogs)", settingsFullAccess);
+            using (new EditorGUI.DisabledScope(settingsFullAccess))
+            {
+                settingsConfirmHighRisk = EditorGUILayout.ToggleLeft("Always confirm high-risk tools", settingsConfirmHighRisk);
+            }
+            if (settingsFullAccess)
+            {
+                EditorGUILayout.HelpBox("Full access mode bypasses all tool confirmation dialogs, including tools that explicitly require confirmation. Token checks and tool-level path restrictions still apply.", MessageType.Warning);
+            }
             settingsPort = EditorGUILayout.IntField("Port", settingsPort);
             settingsTimeout = EditorGUILayout.IntField("Tool timeout ms", settingsTimeout);
 
@@ -841,7 +850,7 @@ namespace AiUnity.EditorAgent
                     if (!AiToolRegistry.TryGet(info.id, out entry)) throw new Exception("Tool not found: " + info.id);
                 }
 
-                bool shouldConfirm = info.requiresConfirmation || (info.danger == "high" && AiEditorAgentSettings.ConfirmHighRiskTools);
+                bool shouldConfirm = AiEditorAgentSettings.ShouldConfirmTool(info);
                 if (shouldConfirm)
                 {
                     bool allowed = EditorUtility.DisplayDialog("Execute Tool", "Execute " + info.id + "?\n\nArguments:\n" + toolArgsJson, "Execute", "Cancel");
@@ -873,6 +882,7 @@ namespace AiUnity.EditorAgent
             settingsAutoStart = AiEditorAgentSettings.AutoStart;
             settingsRequireToken = AiEditorAgentSettings.RequireToken;
             settingsConfirmHighRisk = AiEditorAgentSettings.ConfirmHighRiskTools;
+            settingsFullAccess = AiEditorAgentSettings.FullAccessEnabled;
         }
 
         private void SaveSettingsFromFields()
@@ -882,6 +892,7 @@ namespace AiUnity.EditorAgent
             AiEditorAgentSettings.AutoStart = settingsAutoStart;
             AiEditorAgentSettings.RequireToken = settingsRequireToken;
             AiEditorAgentSettings.ConfirmHighRiskTools = settingsConfirmHighRisk;
+            AiEditorAgentSettings.FullAccessEnabled = settingsFullAccess;
             LoadSettingsToFields();
             RefreshAll();
         }
