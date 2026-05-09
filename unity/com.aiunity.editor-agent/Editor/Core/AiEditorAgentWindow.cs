@@ -683,7 +683,7 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Service Settings", Styles.sectionTitle);
             settingsAutoStart = EditorGUILayout.ToggleLeft("Auto-start service when Unity loads or scripts reload", settingsAutoStart);
-            settingsRequireToken = EditorGUILayout.ToggleLeft("Require X-Unity-Ai-Token for protected endpoints", settingsRequireToken);
+            settingsRequireToken = EditorGUILayout.ToggleLeft("Require token header (X-AI-Agent-Token or X-Unity-Ai-Token) for protected endpoints", settingsRequireToken);
             settingsFullAccess = EditorGUILayout.ToggleLeft("Enable full access mode (skip all tool confirmation dialogs)", settingsFullAccess);
             using (new EditorGUI.DisabledScope(settingsFullAccess))
             {
@@ -904,7 +904,7 @@ namespace AiUnity.EditorAgent
 
         private void CopyCurl(string toolId, string body)
         {
-            string curl = "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -H \"X-Unity-Ai-Token: <TOKEN>\" \\\n  -d '" + (string.IsNullOrWhiteSpace(body) ? "{}" : body.Replace("'", "'\\''")) + "' \\\n  " + AiEditorAgentSettings.ServerUrl + "/call/" + toolId;
+            string curl = "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -H \"" + AiEditorAgentPaths.PrimaryTokenHeader + ": <TOKEN>\" \\\n  -d '" + (string.IsNullOrWhiteSpace(body) ? "{}" : body.Replace("'", "'\\''")) + "' \\\n  " + AiEditorAgentSettings.ServerUrl + "/call/" + toolId;
             Copy(curl);
         }
 

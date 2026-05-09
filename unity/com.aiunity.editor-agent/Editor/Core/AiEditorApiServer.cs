@@ -258,7 +258,7 @@ namespace AiUnity.EditorAgent
 
                 if (!IsAuthorized(context.Request))
                 {
-                    Send(context, 401, AiJson.Error("Unauthorized. Provide X-Unity-Ai-Token."));
+                    Send(context, 401, AiJson.Error("Unauthorized. Provide " + AiEditorAgentPaths.PrimaryTokenHeader + " or " + AiEditorAgentPaths.LegacyTokenHeader + "."));
                     return;
                 }
 
@@ -369,7 +369,11 @@ namespace AiUnity.EditorAgent
             if (!requireTokenCached) return true;
             string expected = Token;
             if (string.IsNullOrEmpty(expected)) return false;
-            string provided = request.Headers["X-Unity-Ai-Token"];
+            string provided = request.Headers[AiEditorAgentPaths.PrimaryTokenHeader];
+            if (string.IsNullOrEmpty(provided))
+            {
+                provided = request.Headers[AiEditorAgentPaths.LegacyTokenHeader];
+            }
             return string.Equals(provided, expected, StringComparison.Ordinal);
         }
 
@@ -587,7 +591,7 @@ namespace AiUnity.EditorAgent
         {
             response.Headers["Access-Control-Allow-Origin"] = "http://127.0.0.1";
             response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-Unity-Ai-Token";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, " + AiEditorAgentPaths.PrimaryTokenHeader + ", " + AiEditorAgentPaths.LegacyTokenHeader;
             response.Headers["Cache-Control"] = "no-store";
         }
     }

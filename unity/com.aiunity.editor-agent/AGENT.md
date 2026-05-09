@@ -2,6 +2,8 @@
 
 This document is the built-in operating manual for AI agents that control Unity through the AI Unity Editor Agent package.
 
+AI Unity Editor Agent is the Unity adapter of the shared AI Platform Agent Framework.
+
 The agent must treat `manifestHash` as the capability cache key and must prefer search, bundle, describe, and paged result flows over repeatedly loading the full manifest.
 
 ## 1. Connection
@@ -18,7 +20,13 @@ Default token file:
 <ProjectRoot>/Library/AiUnityEditorAgent/token.txt
 ```
 
-Required request header unless disabled by the user in the Control Center:
+Primary request header unless disabled by the user in the Control Center:
+
+```http
+X-AI-Agent-Token: <token>
+```
+
+Backward-compatible legacy header:
 
 ```http
 X-Unity-Ai-Token: <token>
@@ -34,21 +42,21 @@ Lightweight manifest summary:
 
 ```http
 GET /manifest
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Full manifest fallback:
 
 ```http
 GET /manifest/full
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Manifest search:
 
 ```http
 POST /manifest/search
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {"query":"find prefab dependencies","limit":6}
@@ -59,14 +67,14 @@ Focused capability bundles:
 ```http
 GET /manifest/bundles
 GET /manifest/bundle/asset-analysis
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Describe exact tool schemas:
 
 ```http
 POST /tool/describe_many
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {"ids":["asset.find","asset.dependencies"]}
@@ -76,7 +84,7 @@ Call a tool:
 
 ```http
 POST /call/{toolId}
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {...tool arguments...}
@@ -86,21 +94,21 @@ Read next pages or text chunks from a result handle:
 
 ```http
 GET /result/{handleId}?offset=0&limit=20
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Read the concise brief:
 
 ```http
 GET /agent/brief
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Read the full manual:
 
 ```http
 GET /agent
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 ## 2. Required AI workflow
@@ -348,7 +356,7 @@ TOKEN=$(cat Library/AiUnityEditorAgent/token.txt)
 Health:
 
 ```bash
-curl -H "X-Unity-Ai-Token: $TOKEN" http://127.0.0.1:18777/health
+curl -H "X-AI-Agent-Token: $TOKEN" http://127.0.0.1:18777/health
 ```
 
 Search candidate tools:
@@ -356,7 +364,7 @@ Search candidate tools:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"query":"find prefab dependencies","limit":6}' \
   http://127.0.0.1:18777/manifest/search
 ```
@@ -366,7 +374,7 @@ Describe exact schemas:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"ids":["asset.find","asset.dependencies"]}' \
   http://127.0.0.1:18777/tool/describe_many
 ```
@@ -376,7 +384,7 @@ Call asset search:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"filter":"t:Prefab","folders":["Assets"],"maxResults":100,"pageSize":20}' \
   http://127.0.0.1:18777/call/asset.find
 ```
@@ -384,6 +392,6 @@ curl -X POST \
 Read the next page from a result handle:
 
 ```bash
-curl -H "X-Unity-Ai-Token: $TOKEN" \
+curl -H "X-AI-Agent-Token: $TOKEN" \
   "http://127.0.0.1:18777/result/<HANDLE>?offset=20&limit=20"
 ```

@@ -172,10 +172,15 @@ namespace AiUnity.EditorAgent
             string token = AiEditorApiServer.Token;
             string masked = string.IsNullOrEmpty(token) || token.Length < 8 ? "" : token.Substring(0, 4) + "..." + token.Substring(token.Length - 4);
             return "{"
+                + "\"framework\":" + AiJson.Quote(AiEditorAgentPaths.FrameworkName) + ","
+                + "\"serviceId\":" + AiJson.Quote(AiEditorAgentPaths.ServiceId) + ","
+                + "\"platformId\":" + AiJson.Quote(AiEditorAgentPaths.PlatformId) + ","
                 + "\"autoStart\":" + AiJson.Bool(AiEditorAgentSettings.AutoStart) + ","
                 + "\"requireToken\":" + AiJson.Bool(AiEditorAgentSettings.RequireToken) + ","
                 + "\"confirmHighRiskTools\":" + AiJson.Bool(AiEditorAgentSettings.ConfirmHighRiskTools) + ","
                 + "\"fullAccessEnabled\":" + AiJson.Bool(AiEditorAgentSettings.FullAccessEnabled) + ","
+                + "\"acceptedTokenHeaders\":[" + AiJson.Quote(AiEditorAgentPaths.PrimaryTokenHeader) + "," + AiJson.Quote(AiEditorAgentPaths.LegacyTokenHeader) + "],"
+                + "\"supportsDynamicToolRegistration\":true,"
                 + "\"port\":" + AiJson.Number(AiEditorAgentSettings.Port) + ","
                 + "\"serverUrl\":" + AiJson.Quote(AiEditorAgentSettings.ServerUrl) + ","
                 + "\"tokenPath\":" + AiJson.Quote(AiEditorAgentPaths.TokenPath) + ","

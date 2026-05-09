@@ -10,11 +10,15 @@ namespace AiUnity.EditorAgent
             StringBuilder sb = new StringBuilder(1024);
             sb.Append('{');
             if (includeOkField) sb.Append("\"ok\":true,");
+            sb.Append("\"framework\":").Append(AiJson.Quote(AiEditorAgentPaths.FrameworkName)).Append(',');
             sb.Append("\"service\":\"AI Unity Editor Agent\",");
+            sb.Append("\"serviceId\":").Append(AiJson.Quote(AiEditorAgentPaths.ServiceId)).Append(',');
             sb.Append("\"version\":").Append(AiJson.Quote(AiEditorAgentPaths.ServiceVersion)).Append(',');
+            sb.Append("\"platformId\":").Append(AiJson.Quote(AiEditorAgentPaths.PlatformId)).Append(',');
             sb.Append("\"protocolVersion\":").Append(AiJson.Quote(AiEditorAgentPaths.ProtocolVersion)).Append(',');
             sb.Append("\"serverRunning\":").Append(AiJson.Bool(serverRunning)).Append(',');
             sb.Append("\"requiresToken\":").Append(AiJson.Bool(requiresToken)).Append(',');
+            sb.Append("\"acceptedTokenHeaders\":").Append(BuildAcceptedTokenHeadersJson()).Append(',');
             sb.Append("\"serverUrl\":").Append(AiJson.Quote(AiEditorAgentSettings.ServerUrl)).Append(',');
             sb.Append("\"manifestHash\":").Append(AiJson.Quote(AiToolRegistry.ManifestHash)).Append(',');
             sb.Append("\"toolCount\":").Append(AiJson.Number(AiToolRegistry.Count)).Append(',');
@@ -25,6 +29,7 @@ namespace AiUnity.EditorAgent
             sb.Append("\"supportsBundles\":true,");
             sb.Append("\"supportsTextChunking\":true,");
             sb.Append("\"supportsCompileSnapshot\":true,");
+            sb.Append("\"supportsDynamicToolRegistration\":true,");
             sb.Append("\"recommendedFlow\":[");
             sb.Append(AiJson.Quote("GET /health and compare manifestHash before refreshing capabilities.")).Append(',');
             sb.Append(AiJson.Quote("Use POST /manifest/search or GET /manifest/bundle/{id} to narrow candidate tools.")).Append(',');
@@ -42,6 +47,8 @@ namespace AiUnity.EditorAgent
             StringBuilder sb = new StringBuilder(1024);
             sb.Append('{');
             if (includeOkField) sb.Append("\"ok\":true,");
+            sb.Append("\"framework\":").Append(AiJson.Quote(AiEditorAgentPaths.FrameworkName)).Append(',');
+            sb.Append("\"platformId\":").Append(AiJson.Quote(AiEditorAgentPaths.PlatformId)).Append(',');
             sb.Append("\"summary\":").Append(AiJson.Quote("Prefer cached discovery through health, manifest search, on-demand tool descriptions, and paged result handles instead of repeatedly loading the full manifest.")).Append(',');
             sb.Append("\"steps\":[");
             sb.Append(AiJson.Quote("Call GET /health and reuse cached capabilities while manifestHash stays unchanged.")).Append(',');
@@ -64,9 +71,19 @@ namespace AiUnity.EditorAgent
                 + "\"manifestSearch\":\"/manifest/search\","
                 + "\"manifestBundles\":\"/manifest/bundles\","
                 + "\"toolDescribeMany\":\"/tool/describe_many\","
+                + "\"call\":\"/call/{toolId}\","
+                + "\"agent\":\"/agent\","
                 + "\"agentBrief\":\"/agent/brief\","
                 + "\"resultPage\":\"/result/{handleId}\""
                 + "}";
+        }
+
+        private static string BuildAcceptedTokenHeadersJson()
+        {
+            return "["
+                + AiJson.Quote(AiEditorAgentPaths.PrimaryTokenHeader) + ","
+                + AiJson.Quote(AiEditorAgentPaths.LegacyTokenHeader)
+                + "]";
         }
 
         private static string BuildNamespaceArrayJson()

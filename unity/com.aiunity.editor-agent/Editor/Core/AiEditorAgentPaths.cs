@@ -9,9 +9,14 @@ namespace AiUnity.EditorAgent
 {
     internal static class AiEditorAgentPaths
     {
+        public const string FrameworkName = "AI Platform Agent Framework";
         public const string PackageName = "com.aiunity.editor-agent";
+        public const string PlatformId = "unity";
         public const string ServiceVersion = "0.2.0";
+        public const string ServiceId = "aiunity.editor-agent";
         public const string ProtocolVersion = "2.0";
+        public const string PrimaryTokenHeader = "X-AI-Agent-Token";
+        public const string LegacyTokenHeader = "X-Unity-Ai-Token";
         public const string GeneratedToolsFolder = "Assets/Editor/AiUnityEditorAgent/GeneratedTools";
         public const string LibraryFolderRelative = "Library/AiUnityEditorAgent";
 
