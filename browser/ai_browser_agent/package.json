@@ -1,0 +1,14 @@
+{
+  "name": "ai-browser-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser adapter for AI Platform Agent Framework using Chrome DevTools Protocol.",
+  "bin": {
+    "ai-browser-agent": "./bin/ai_browser_agent.mjs"
+  },
+  "scripts": {
+    "start": "node ./bin/ai_browser_agent.mjs",
+    "check": "node --check ./bin/ai_browser_agent.mjs && node --check ./lib/*.mjs"
+  }
+}

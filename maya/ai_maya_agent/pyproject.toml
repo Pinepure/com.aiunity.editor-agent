@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-maya-agent"
+version = "0.1.0"
+description = "Maya adapter for AI Platform Agent Framework."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+ai-maya-agent = "ai_maya_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ai_maya_agent*"]

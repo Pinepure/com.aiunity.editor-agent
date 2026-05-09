@@ -1,1 +1,4 @@
 .DS_Store
+.ai_platform_agent/
+__pycache__/
+*.pyc
