@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AiRevitAgent</AssemblyName>
+    <RootNamespace>AiPlatform.RevitAgent</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RevitApiDllDir Condition="'$(RevitApiDllDir)' == ''">$(REVIT_API_DLL_DIR)</RevitApiDllDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RevitApiDllDir)' != ''">
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDllDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDllDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <Target Name="ValidateRevitReferences" BeforeTargets="Build" Condition="'$(RevitApiDllDir)' == ''">
+    <Error Text="Set RevitApiDllDir or REVIT_API_DLL_DIR to the folder containing RevitAPI.dll and RevitAPIUI.dll before building AiRevitAgent." />
+  </Target>
+</Project>

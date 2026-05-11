@@ -13,7 +13,7 @@ http://127.0.0.1:19777
 Default token file:
 
 ```text
-<ProjectRoot>/.ai_platform_agent/token.txt
+<ProjectRoot>/.ai_platform_agent/flutter/token.txt
 ```
 
 Accepted token headers:
@@ -36,6 +36,9 @@ X-Flutter-Ai-Token: <token>
 
 ## Platform notes
 
-- This adapter currently reports `supportsDynamicToolRegistration: false`.
+- This adapter supports dynamic tool registration through `tool.get_template`, `tool.upsert_generated`, `tool.list_generated`, `tool.delete_generated`, and `tool.reload_generated`.
+- Generated tool definitions live under `.ai_platform_agent/flutter/generated_tools/`.
+- Generated tool source runs as async Dart with `(args, host)`.
+- Generated tool validation compiles a generated runner script through the configured Dart executable before the manifest reload completes, unless validation is explicitly skipped.
 - Flutter project mutation helpers exist, but high-risk write/delete tools require the server to start with `--full-access`.
 - Flutter CLI tools are invoked from the configured project root.

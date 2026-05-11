@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 5,
+  "id": "com.aiplatform.photoshop.agent",
+  "name": "AI Photoshop Agent",
+  "version": "0.1.0",
+  "main": "index.html",
+  "host": {
+    "app": "PS",
+    "minVersion": "25.1.0",
+    "data": {
+      "apiVersion": 2,
+      "loadEvent": "use"
+    }
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "aiPhotoshopAgentPanel",
+      "label": {
+        "default": "AI Photoshop Agent"
+      }
+    }
+  ],
+  "requiredPermissions": {
+    "localFileSystem": "request"
+  }
+}

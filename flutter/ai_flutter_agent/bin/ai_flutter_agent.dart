@@ -17,6 +17,7 @@ Future<void> main(List<String> args) async {
   final requireToken = !options.containsKey('no-token');
   final fullAccessEnabled = options.containsKey('full-access');
   final flutterExecutable = options['flutter-executable'] ?? 'flutter';
+  final dartExecutable = options['dart-executable'] ?? 'dart';
 
   final config = AiFlutterAgentConfig(
     projectRoot: projectRoot,
@@ -25,6 +26,7 @@ Future<void> main(List<String> args) async {
     requireToken: requireToken,
     fullAccessEnabled: fullAccessEnabled,
     flutterExecutable: flutterExecutable,
+    dartExecutable: dartExecutable,
     toolTimeoutMs: toolTimeoutMs,
   );
 
@@ -92,6 +94,7 @@ Options:
   --no-token                    Disable token auth for protected endpoints.
   --full-access                 Allow high-risk mutation tools.
   --flutter-executable <path>   Flutter CLI executable. Defaults to flutter.
+  --dart-executable <path>      Dart executable used for generated Flutter tools. Defaults to dart.
   --tool-timeout-ms <ms>        Max tool run time in milliseconds. Defaults to 120000.
   --help                        Show this help.
 ''';

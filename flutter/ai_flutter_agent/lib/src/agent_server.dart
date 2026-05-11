@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'generated_tool_host.dart';
 import 'models.dart';
 import 'result_handle_store.dart';
 import 'tools.dart';
@@ -11,15 +12,22 @@ class AiFlutterAgentServer {
   AiFlutterAgentServer(this.config)
       : runtimeState = AiRuntimeState(),
         resultHandleStore = ResultHandleStore(),
-        registry = AiToolRegistry(bundles: defaultBundles());
+        registry = AiToolRegistry(bundles: defaultBundles()),
+        generatedToolHost = AiFlutterGeneratedToolHost(
+          config: config,
+        );
 
   final AiFlutterAgentConfig config;
   final AiRuntimeState runtimeState;
   final ResultHandleStore resultHandleStore;
   final AiToolRegistry registry;
+  final AiFlutterGeneratedToolHost generatedToolHost;
 
   HttpServer? _server;
-  bool _initialized = false;
+  StreamSubscription<FileSystemEvent>? _generatedToolsWatcher;
+  bool _generatedToolsDirty = true;
+  String _generatedToolsFingerprint = '';
+  int _generatedToolsCount = 0;
   late final AiToolExecutionContext _toolContext = AiToolExecutionContext(
     config: config,
     registry: registry,
@@ -30,6 +38,8 @@ class AiFlutterAgentServer {
     regenerateToken: _regenerateToken,
     buildHealthPayload: ({bool includeOk = false}) => _buildHealthPayload(includeOk: includeOk),
     buildAgentBriefPayload: ({bool includeOk = false}) => _buildAgentBriefPayload(includeOk: includeOk),
+    generatedToolHost: generatedToolHost,
+    reloadGeneratedTools: ({bool force = false}) => _refreshRegistry(force: force),
   );
   late final String _agentManual = _loadAgentManual();
   String _token = '';
@@ -40,14 +50,21 @@ class AiFlutterAgentServer {
     if (isRunning) {
       return;
     }
-    if (!_initialized) {
-      registerDefaultTools(registry, _toolContext);
-      _initialized = true;
-    }
+    await generatedToolHost.ensureLayout();
+    await _refreshRegistry(force: true);
     if (config.requireToken) {
       _token = await _ensureToken();
     }
     _server = await HttpServer.bind(config.host, config.port);
+    _generatedToolsWatcher = Directory(config.generatedToolsDirectoryPath)
+        .watch()
+        .listen(
+          (event) => markGeneratedToolsDirty('file event: ${event.type}'),
+          onError: (Object error) => runtimeState.log(
+            'warning',
+            'Generated tool watcher error: $error',
+          ),
+        );
     runtimeState.log('info', 'Service started at ${config.serverUrl}');
     unawaited(_server!.forEach(_handleRequest));
   }
@@ -57,8 +74,17 @@ class AiFlutterAgentServer {
       return;
     }
     runtimeState.log('info', 'Service stopping.');
+    await _generatedToolsWatcher?.cancel();
+    _generatedToolsWatcher = null;
     await _server!.close(force: true);
     _server = null;
+  }
+
+  void markGeneratedToolsDirty([String reason = '']) {
+    _generatedToolsDirty = true;
+    if (reason.trim().isNotEmpty) {
+      runtimeState.log('info', 'Generated tool registry marked dirty: $reason');
+    }
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
@@ -72,6 +98,7 @@ class AiFlutterAgentServer {
     }
 
     try {
+      await _refreshRegistry();
       final path = request.uri.pathSegments.join('/');
       if (path == 'health' && request.method == 'GET') {
         await _sendJson(request.response, HttpStatus.ok, _buildHealthPayload(includeOk: true));
@@ -282,7 +309,7 @@ class AiFlutterAgentServer {
       'supportsResultHandles': true,
       'supportsBundles': true,
       'supportsTextChunking': true,
-      'supportsDynamicToolRegistration': false,
+      'supportsDynamicToolRegistration': true,
       'recommendedFlow': <String>[
         'GET /health and compare manifestHash before refreshing capabilities.',
         'Use POST /manifest/search or GET /manifest/bundle/{id} to narrow candidate tools.',
@@ -301,6 +328,14 @@ class AiFlutterAgentServer {
         'agent': '/agent',
         'agentBrief': '/agent/brief',
         'resultPage': '/result/{handleId}',
+      },
+      'platform': <String, dynamic>{
+        'projectRoot': config.projectRoot,
+        'flutterExecutable': config.flutterExecutable,
+        'dartExecutable': config.dartExecutable,
+        'generatedToolsDirectoryPath': config.generatedToolsDirectoryPath,
+        'generatedToolRuntimeDirectoryPath': config.generatedToolRuntimeDirectoryPath,
+        'generatedToolCount': _generatedToolsCount,
       },
     };
   }
@@ -400,6 +435,46 @@ Use GET /health, cache manifestHash, prefer manifest search or bundle loading, t
     response.statusCode = statusCode;
     response.write(jsonEncode(payload));
     await response.close();
+  }
+
+  Future<JsonMap> _refreshRegistry({bool force = false}) async {
+    if (!force && !_generatedToolsDirty && registry.count > 0) {
+      return <String, dynamic>{
+        'reloaded': false,
+        'manifestHash': registry.manifestHash,
+        'generatedToolCount': _generatedToolsCount,
+      };
+    }
+
+    final fingerprint = await generatedToolHost.computeFingerprint();
+    if (!force && fingerprint == _generatedToolsFingerprint && registry.count > 0) {
+      _generatedToolsDirty = false;
+      return <String, dynamic>{
+        'reloaded': false,
+        'manifestHash': registry.manifestHash,
+        'generatedToolCount': _generatedToolsCount,
+      };
+    }
+
+    registry.reset();
+    _toolContext.registry = registry;
+    registerDefaultTools(registry, _toolContext);
+    final generatedDefinitions = await generatedToolHost.loadDefinitions();
+    for (final definition in generatedDefinitions) {
+      registry.register(generatedToolHost.createToolDefinition(definition, _toolContext));
+    }
+    _generatedToolsFingerprint = fingerprint;
+    _generatedToolsDirty = false;
+    _generatedToolsCount = generatedDefinitions.length;
+    runtimeState.log(
+      'info',
+      'Generated tool registry refreshed. Loaded ${generatedDefinitions.length} generated tool(s).',
+    );
+    return <String, dynamic>{
+      'reloaded': true,
+      'manifestHash': registry.manifestHash,
+      'generatedToolCount': generatedDefinitions.length,
+    };
   }
 }
 

@@ -32,6 +32,7 @@ class AiFlutterAgentConfig {
     this.requireToken = true,
     this.fullAccessEnabled = false,
     this.flutterExecutable = 'flutter',
+    this.dartExecutable = 'dart',
     this.toolTimeoutMs = 120000,
     this.serviceVersion = '0.1.0',
   });
@@ -50,6 +51,7 @@ class AiFlutterAgentConfig {
   final bool requireToken;
   final bool fullAccessEnabled;
   final String flutterExecutable;
+  final String dartExecutable;
   final int toolTimeoutMs;
   final String serviceVersion;
 
@@ -60,9 +62,13 @@ class AiFlutterAgentConfig {
 
   String get serverUrl => 'http://$host:$port';
 
-  String get stateDirectoryPath => _join(projectRoot, '.ai_platform_agent');
+  String get stateDirectoryPath => _join(_join(projectRoot, '.ai_platform_agent'), 'flutter');
 
   String get tokenFilePath => _join(stateDirectoryPath, 'token.txt');
+
+  String get generatedToolsDirectoryPath => _join(stateDirectoryPath, 'generated_tools');
+
+  String get generatedToolRuntimeDirectoryPath => _join(stateDirectoryPath, 'generated_runtime');
 }
 
 class AiRuntimeState {
@@ -178,10 +184,12 @@ class AiToolExecutionContext {
     required this.regenerateToken,
     required this.buildHealthPayload,
     required this.buildAgentBriefPayload,
+    required this.generatedToolHost,
+    required this.reloadGeneratedTools,
   });
 
   final AiFlutterAgentConfig config;
-  final AiToolRegistry registry;
+  AiToolRegistry registry;
   final ResultHandleStore resultHandleStore;
   final AiRuntimeState runtimeState;
   final String agentManual;
@@ -189,6 +197,8 @@ class AiToolExecutionContext {
   final Future<String> Function() regenerateToken;
   final JsonMap Function({bool includeOk}) buildHealthPayload;
   final JsonMap Function({bool includeOk}) buildAgentBriefPayload;
+  final Object? generatedToolHost;
+  final Future<JsonMap> Function({bool force}) reloadGeneratedTools;
 }
 
 class AiToolRegistry {
@@ -203,6 +213,11 @@ class AiToolRegistry {
       throw StateError('Duplicate tool id: ${tool.id}');
     }
     _tools[tool.id] = tool;
+    _updatedAt = DateTime.now().toUtc();
+  }
+
+  void reset() {
+    _tools.clear();
     _updatedAt = DateTime.now().toUtc();
   }
 

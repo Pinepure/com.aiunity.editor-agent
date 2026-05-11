@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Photoshop Agent</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <h1>AI Photoshop Agent</h1>
+      <p class="intro">Select the bridge folder shared with the local companion service.</p>
+      <div class="actions">
+        <button id="choose-bridge">Choose Bridge Folder</button>
+        <button id="refresh-status">Refresh</button>
+      </div>
+      <dl class="status-grid">
+        <dt>Bridge folder</dt>
+        <dd id="bridge-path">Not configured</dd>
+        <dt>Plugin status</dt>
+        <dd id="plugin-status">Idle</dd>
+        <dt>Heartbeat</dt>
+        <dd id="heartbeat">Unknown</dd>
+        <dt>Last error</dt>
+        <dd id="last-error">None</dd>
+      </dl>
+      <pre id="debug"></pre>
+    </main>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+{
+  "name": "ai-vscode-agent",
+  "displayName": "AI VS Code Agent",
+  "description": "VS Code adapter for AI Platform Agent Framework.",
+  "version": "0.1.0",
+  "publisher": "ai-platform-agent",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiPlatformAgent.vscode.showStatus",
+        "title": "AI VS Code Agent: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "AI VS Code Agent",
+      "properties": {
+        "aiPlatformAgent.vscode.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the AI VS Code Agent local HTTP service."
+        },
+        "aiPlatformAgent.vscode.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "HTTP bind host for AI VS Code Agent."
+        },
+        "aiPlatformAgent.vscode.port": {
+          "type": "number",
+          "default": 19790,
+          "description": "HTTP bind port for AI VS Code Agent."
+        },
+        "aiPlatformAgent.vscode.requireToken": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require token authentication for AI VS Code Agent."
+        },
+        "aiPlatformAgent.vscode.fullAccess": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable high-risk mutation and task execution tools."
+        },
+        "aiPlatformAgent.vscode.toolTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "Per-tool timeout in milliseconds for AI VS Code Agent."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js && node --check lib/*.js"
+  }
+}

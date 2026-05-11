@@ -10,6 +10,12 @@ Default base URL:
 http://127.0.0.1:19788
 ```
 
+Default token file:
+
+```text
+<root-dir>/.ai_platform_agent/wpf/token.txt
+```
+
 Accepted token headers:
 
 ```http
@@ -24,6 +30,7 @@ X-Wpf-Ai-Token: <token>
 3. Prefer `POST /manifest/search` or `GET /manifest/bundle/{id}` over full manifest loads.
 4. Use `POST /tool/describe_many` before calling unfamiliar tools.
 5. Use `GET /result/{handleId}` when a tool returns paged items or text chunks.
+6. Use `GET /agent` when the client needs the built-in adapter operating manual.
 
 ## Platform notes
 

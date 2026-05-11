@@ -1,10 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'generated_tool_host.dart';
 import 'models.dart';
 
 List<AiManifestBundleDefinition> defaultBundles() {
   return const <AiManifestBundleDefinition>[
+    AiManifestBundleDefinition(
+      id: 'tooling.dynamic',
+      description: 'Generated tool management and dynamic registration tools.',
+      prefixes: <String>['tool.'],
+    ),
     AiManifestBundleDefinition(
       id: 'project-inspection',
       description: 'Project metadata, file listing, file reading, text search, and widget indexing.',
@@ -16,9 +22,14 @@ List<AiManifestBundleDefinition> defaultBundles() {
       prefixes: <String>['flutter.'],
     ),
     AiManifestBundleDefinition(
+      id: 'host-execution',
+      description: 'Generic local process execution for verification and host control.',
+      prefixes: <String>['process.'],
+    ),
+    AiManifestBundleDefinition(
       id: 'service-diagnostics',
       description: 'Health, manifest discovery, config, logs, and recent call inspection.',
-      prefixes: <String>['system.', 'manifest.', 'tool.', 'agent.', 'service.'],
+      prefixes: <String>['system.', 'manifest.', 'agent.', 'service.'],
     ),
   ];
 }
@@ -119,6 +130,105 @@ void registerDefaultTools(AiToolRegistry registry, AiToolExecutionContext contex
 
   registry.register(
     AiToolDefinition(
+      id: 'tool.get_template',
+      description: 'Returns a safe template for a generated Flutter tool definition.',
+      argsSchemaJson: '{"type":"object","properties":{"toolId":{"type":"string"},"description":{"type":"string"},"fileName":{"type":"string"}}}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'getGeneratedToolTemplate',
+      handler: (args, toolContext) async => _generatedToolHost(toolContext).getTemplate(
+        toolId: args['toolId']?.toString() ?? 'generated.flutter_example',
+        description: args['description']?.toString() ?? 'Generated Flutter tool.',
+        fileName: args['fileName']?.toString() ?? '',
+      ),
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
+      id: 'tool.list_generated',
+      description: 'Lists generated Flutter tool definitions available to the adapter.',
+      argsSchemaJson: '{"type":"object","properties":{"pageSize":{"type":"integer"}}}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'listGeneratedTools',
+      handler: (args, toolContext) async {
+        final pageSize = _intArg(args, 'pageSize', 20);
+        final items = await _generatedToolHost(toolContext).listDefinitions();
+        return toolContext.resultHandleStore.buildItemsResult(
+          sourceToolId: 'tool.list_generated',
+          fieldName: 'items',
+          items: items,
+          summary: <String, dynamic>{
+            'kind': 'generatedTools',
+            'platformId': AiFlutterAgentConfig.platformId,
+          },
+          pageSize: pageSize,
+        );
+      },
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
+      id: 'tool.upsert_generated',
+      description: 'Creates or updates one generated Flutter tool definition and reloads the manifest.',
+      argsSchemaJson: '{"type":"object","required":["fileName","definition"],"properties":{"fileName":{"type":"string"},"definition":{"type":"object"},"validate":{"type":"boolean"}}}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'upsertGeneratedTool',
+      danger: AiToolDanger.high,
+      requiresConfirmation: true,
+      handler: (args, toolContext) async {
+        final result = await _generatedToolHost(toolContext).upsertDefinition(
+          fileName: _requiredString(args, 'fileName'),
+          definition: args['definition'],
+          validate: _boolArg(args, 'validate', true),
+        );
+        final reloadResult = await toolContext.reloadGeneratedTools(force: true);
+        return <String, dynamic>{
+          ...result,
+          'manifestHash': reloadResult['manifestHash'],
+          'generatedToolCount': reloadResult['generatedToolCount'],
+          'message': 'Generated Flutter tool definition written and manifest reloaded.',
+        };
+      },
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
+      id: 'tool.delete_generated',
+      description: 'Deletes one generated Flutter tool definition and reloads the manifest.',
+      argsSchemaJson: '{"type":"object","required":["fileName"],"properties":{"fileName":{"type":"string"}}}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'deleteGeneratedTool',
+      danger: AiToolDanger.high,
+      requiresConfirmation: true,
+      handler: (args, toolContext) async {
+        final result = await _generatedToolHost(toolContext).deleteDefinition(
+          _requiredString(args, 'fileName'),
+        );
+        final reloadResult = await toolContext.reloadGeneratedTools(force: true);
+        return <String, dynamic>{
+          ...result,
+          'manifestHash': reloadResult['manifestHash'],
+          'generatedToolCount': reloadResult['generatedToolCount'],
+        };
+      },
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
+      id: 'tool.reload_generated',
+      description: 'Forces a generated-tool rescan and manifest rebuild.',
+      argsSchemaJson: '{}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'reloadGeneratedTools',
+      handler: (args, toolContext) => toolContext.reloadGeneratedTools(force: true),
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
       id: 'agent.get_brief',
       description: 'Returns the concise protocol brief for capability discovery and paged result handling.',
       argsSchemaJson: '{}',
@@ -157,12 +267,16 @@ void registerDefaultTools(AiToolRegistry registry, AiToolExecutionContext contex
           'requireToken': toolContext.config.requireToken,
           'fullAccessEnabled': toolContext.config.fullAccessEnabled,
           'acceptedTokenHeaders': toolContext.config.acceptedTokenHeaders,
-          'supportsDynamicToolRegistration': false,
+          'supportsDynamicToolRegistration': true,
           'projectRoot': toolContext.config.projectRoot,
+          'stateDirectoryPath': toolContext.config.stateDirectoryPath,
+          'generatedToolsDirectoryPath': toolContext.config.generatedToolsDirectoryPath,
+          'generatedToolRuntimeDirectoryPath': toolContext.config.generatedToolRuntimeDirectoryPath,
           'serverUrl': toolContext.config.serverUrl,
           'tokenPath': toolContext.config.tokenFilePath,
           'tokenPreview': _maskToken(token),
           'flutterExecutable': toolContext.config.flutterExecutable,
+          'dartExecutable': toolContext.config.dartExecutable,
           'toolTimeoutMs': toolContext.config.toolTimeoutMs,
         };
       },
@@ -545,6 +659,54 @@ void registerDefaultTools(AiToolRegistry registry, AiToolExecutionContext contex
 
   registry.register(
     AiToolDefinition(
+      id: 'process.run_command',
+      description: 'Runs one local command for host verification or control. Args: executable, arguments, workingDirectory, runInShell.',
+      argsSchemaJson: '{"type":"object","required":["executable"],"properties":{"executable":{"type":"string"},"arguments":{"type":"array","items":{"type":"string"}},"workingDirectory":{"type":"string"},"runInShell":{"type":"boolean"}}}',
+      returnSchemaJson: '{"type":"object"}',
+      handlerName: 'runProcessCommand',
+      danger: AiToolDanger.high,
+      requiresConfirmation: true,
+      handler: (args, toolContext) async {
+        final executable = _requiredString(args, 'executable');
+        final arguments = (args['arguments'] as List?)
+                ?.map((item) => item.toString())
+                .toList() ??
+            const <String>[];
+        final workingDirectory = args['workingDirectory']?.toString() ?? '';
+        final runInShell = _boolArg(args, 'runInShell', true);
+        final resolvedWorkingDirectory = _resolveCommandWorkingDirectory(
+          toolContext.config,
+          workingDirectory,
+        );
+        final result = await Process.run(
+          executable,
+          arguments,
+          workingDirectory: resolvedWorkingDirectory,
+          runInShell: runInShell,
+        ).timeout(Duration(milliseconds: toolContext.config.toolTimeoutMs));
+        final stdoutText = result.stdout?.toString() ?? '';
+        final stderrText = result.stderr?.toString() ?? '';
+        final payload = toolContext.resultHandleStore.buildTextResult(
+          sourceToolId: 'process.run_command',
+          text: _combineProcessOutput(stdoutText, stderrText),
+          summary: <String, dynamic>{
+            'command': <String>[executable, ...arguments],
+            'workingDirectory': resolvedWorkingDirectory,
+            'exitCode': result.exitCode,
+          },
+        );
+        payload['command'] = <String>[executable, ...arguments];
+        payload['workingDirectory'] = resolvedWorkingDirectory;
+        payload['exitCode'] = result.exitCode;
+        payload['stdoutChars'] = stdoutText.length;
+        payload['stderrChars'] = stderrText.length;
+        return payload;
+      },
+    ),
+  );
+
+  registry.register(
+    AiToolDefinition(
       id: 'flutter.widget_index',
       description: 'Indexes common Flutter widget classes under lib/. Args: under, pageSize, maxEntries.',
       argsSchemaJson: '{"type":"object","properties":{"under":{"type":"string"},"pageSize":{"type":"integer"},"maxEntries":{"type":"integer"}}}',
@@ -624,6 +786,14 @@ Future<JsonMap> _projectInfo(AiToolExecutionContext context) async {
     'hasAndroidDirectory': await Directory(_join(context.config.projectRoot, 'android')).exists(),
     'hasIosDirectory': await Directory(_join(context.config.projectRoot, 'ios')).exists(),
   };
+}
+
+AiFlutterGeneratedToolHost _generatedToolHost(AiToolExecutionContext context) {
+  final host = context.generatedToolHost;
+  if (host is! AiFlutterGeneratedToolHost) {
+    throw StateError('Generated tool host is not configured.');
+  }
+  return host;
 }
 
 Future<JsonMap> _runFlutterCommand({
@@ -760,6 +930,20 @@ String _relativeToProject(AiFlutterAgentConfig config, String absolutePath) {
     return candidate.substring(root.length + 1);
   }
   return candidate;
+}
+
+String _resolveCommandWorkingDirectory(
+  AiFlutterAgentConfig config,
+  String workingDirectory,
+) {
+  final trimmed = workingDirectory.trim();
+  if (trimmed.isEmpty) {
+    return config.projectRoot;
+  }
+  if (trimmed.startsWith('/')) {
+    return _normalizePath(trimmed);
+  }
+  return _normalizePath(_join(config.projectRoot, trimmed));
 }
 
 String _normalizePath(String path) {

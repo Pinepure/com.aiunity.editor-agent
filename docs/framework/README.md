@@ -37,6 +37,24 @@ It standardizes how an AI agent discovers host capabilities, inspects exact tool
 - Large outputs should return a `resultHandle` instead of inflating one response indefinitely.
 - Platform adapters can expose optional features such as dynamic tool registration, but they must declare those capabilities explicitly through `health` and `service.config_get`.
 
+## Dynamic tool registration contract
+
+When an adapter supports self-extension, it should expose the same management surface instead of inventing a host-specific control API:
+
+- `tool.get_template`
+- `tool.list_generated`
+- `tool.upsert_generated`
+- `tool.delete_generated`
+- `tool.reload_generated`
+
+Dynamic adapters should also:
+
+- set `supportsDynamicToolRegistration: true` in `GET /health` and `service.config_get`
+- expose the generated tools directory path through `service.config_get`
+- keep generated tools in a platform-owned `generated_tools/` directory
+- rebuild `manifestHash` whenever generated tool definitions change
+- execute generated code inside a stable host-owned runtime rather than rewriting the adapter itself
+
 ## Repository layout
 
 - `unity/com.aiunity.editor-agent/`
@@ -49,12 +67,22 @@ It standardizes how an AI agent discovers host capabilities, inspects exact tool
   Blender adapter implementation.
 - `figma/ai_figma_agent/`
   Figma adapter implementation.
+- `vscode/ai_vscode_agent/`
+  VS Code adapter implementation.
+- `jetbrains/ai_jetbrains_agent/`
+  JetBrains adapter implementation.
 - `godot/ai_godot_agent/`
   Godot adapter implementation.
 - `houdini/ai_houdini_agent/`
   Houdini adapter implementation.
 - `maya/ai_maya_agent/`
   Maya adapter implementation.
+- `rhino/ai_rhino_agent/`
+  Rhino adapter implementation.
+- `revit/ai_revit_agent/`
+  Revit adapter implementation.
+- `photoshop/ai_photoshop_agent/`
+  Photoshop adapter implementation.
 - `unreal/ai_unreal_agent/`
   Unreal adapter implementation.
 - `android/ai_android_agent/`
@@ -67,19 +95,28 @@ It standardizes how an AI agent discovers host capabilities, inspects exact tool
   Shared protocol and architecture docs.
 
 The prioritized platform rollout is tracked in `docs/framework/PLATFORM_ROADMAP.md`.
+Dynamic self-extension rollout details are tracked in `docs/framework/DYNAMIC_TOOL_ROLLOUT.md`.
+Minimal per-platform packaging guidance is tracked in `docs/framework/MINIMAL_INTEGRATION_GUIDE.md`.
+
+Current dynamic adapters in this repository are `Unity`, `Flutter`, `VS Code`, `JetBrains`, and `Photoshop`. The next planned dynamic batch is `Unreal`, `Godot`, and `Cocos Creator`.
 
 ## Adapter model
 
 Each adapter owns the host-specific work:
 
 - Unity owns editor state, assets, scenes, prefabs, compile state, generated editor tools, and confirmation dialogs.
-- Flutter owns project inspection, source search, file-safe mutations, Flutter CLI workflows, and widget indexing.
+- Flutter owns project inspection, source search, file-safe mutations, Flutter CLI workflows, widget indexing, and generated Dart tool execution.
 - Browser owns Chrome discovery, page targets, runtime evaluation, DOM inspection, and screenshot capture through Chrome DevTools Protocol.
 - Blender owns `.blend` loading, scene inspection, object inspection, render execution, and controlled file mutations through Blender's Python API.
 - Figma owns token-backed file, node, comment, variable, and render/image inspection plus the officially writable REST mutation surfaces.
+- VS Code owns workspace inspection, diagnostics, symbol queries, command discovery, and task execution through the VS Code extension host.
+- JetBrains owns project model, VFS, PSI, and run configuration inspection through the IntelliJ Platform plugin model.
 - Godot owns project inspection, scene inspection, node/property inspection, and controlled scene mutations through headless Godot script execution.
 - Houdini owns `.hip` loading, node graph inspection, parameter inspection, and controlled node or parameter mutations through HOM.
 - Maya owns scene inspection, node and attribute inspection, and controlled scene mutations through Maya standalone APIs.
+- Rhino owns live document, layer, object, viewport, and command workflows through RhinoCommon.
+- Revit owns application, document, view, element, selection, and controlled parameter workflows through the Revit API and `ExternalEvent`.
+- Photoshop owns open document and layer workflows through a Python companion plus a UXP plugin bridge backed by the official Photoshop DOM.
 - Unreal owns project, asset, and actor inspection through Unreal Python, plus live Remote Control API discovery for running editors.
 - Android owns SDK inspection, ADB device/package/log workflows, Gradle build and test execution, and controlled emulator or app actions.
 - WPF owns solution inspection, XAML inspection, XAML search, controlled XAML mutation, and build/test execution through `dotnet` and `msbuild`.

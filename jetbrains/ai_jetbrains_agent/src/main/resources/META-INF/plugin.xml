@@ -1,0 +1,14 @@
+<idea-plugin>
+    <id>com.aiplatform.jetbrains.agent</id>
+    <name>AI JetBrains Agent</name>
+    <vendor email="noreply@example.com">AI Platform Agent</vendor>
+    <description>JetBrains adapter for AI Platform Agent Framework.</description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <applicationService serviceImplementation="com.aiplatform.jetbrainsagent.AiJetBrainsAgentAppService"/>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="com.aiplatform.jetbrainsagent.AiJetBrainsAgentStartupActivity"/>
+    </extensions>
+</idea-plugin>

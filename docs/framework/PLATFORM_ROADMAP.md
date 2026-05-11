@@ -13,14 +13,20 @@ repo-root/
   flutter/ai_flutter_agent/
   browser/ai_browser_agent/
   blender/ai_blender_agent/
+  vscode/ai_vscode_agent/
+  jetbrains/ai_jetbrains_agent/
   figma/ai_figma_agent/
   godot/ai_godot_agent/
   maya/ai_maya_agent/
+  cocos/
+  rhino/ai_rhino_agent/
+  revit/ai_revit_agent/
+  photoshop/ai_photoshop_agent/
   android/ai_android_agent/
   wpf/ai_wpf_agent/
   ios/ai_ios_agent/
-  unreal/
-  houdini/
+  unreal/ai_unreal_agent/
+  houdini/ai_houdini_agent/
 ```
 
 Rules:
@@ -41,20 +47,45 @@ Priority combines:
 
 ## Current roadmap
 
-| Priority | Platform | Why it ranks here | Official host interfaces | Status |
-|---|---|---|---|---|
-| P0 | Unity | High value, rich editor/runtime state, already proven by this repository | Unity Editor API, AssetDatabase, scene/prefab tooling | Implemented |
-| P0 | Browser | Extremely high value for frontend/runtime debugging and inspection | Chrome DevTools Protocol, remote debugging HTTP endpoints | Implemented in this branch |
-| P1 | Flutter | Strong value for app UI and project tooling, first adapter already in place | Flutter CLI, Dart runtime, DevTools/Inspector ecosystem | Implemented in this branch |
-| P1 | Blender | Rich scene/object/material graph and strong official Python API | Blender command line, `bpy`, `bpy.ops`, render API | Implemented in this branch |
-| P1 | Houdini | Node graph and procedural pipeline are ideal for host agents | HOM `hou`, `hython`, Python panels | Implemented in this branch |
-| P1 | Unreal | Strong editor automation value and mature official scripting surface | Unreal Python API, editor automation, Remote Control API | Implemented in this branch |
-| P1 | Figma | High-value design system and file graph workflows with official remote APIs | Figma REST API, comments, variables, file/node/image endpoints | Implemented in this branch |
-| P1 | Godot | Good editor plugin surface and scene/resource workflows | `EditorPlugin`, editor scripting, headless CLI | Implemented in this branch |
-| P1 | Maya | High-value DCC workflows with mature scripting | Maya Python API, Script Editor, `mayapy` | Implemented in this branch |
-| P2 | Android | Valuable host state through SDK, device, and build tooling | ADB, Gradle, Emulator tools | Implemented in this branch |
-| P2 | WPF | Valuable desktop UI/runtime tree and XAML workflows | `.sln`, XAML, `dotnet`, `msbuild` | Implemented in this branch |
-| P2 | iOS | High value with official but more constrained toolchain surfaces | `xcodebuild`, `xcrun simctl`, Simulator logs | Implemented in this branch |
+| Priority | Platform | Why it ranks here | Official host interfaces | Dynamic tool status | Status |
+|---|---|---|---|---|---|
+| P0 | Unity | High value, rich editor/runtime state, already proven by this repository | Unity Editor API, AssetDatabase, scene/prefab tooling | Dynamic generated tools implemented | Implemented |
+| P0 | Browser | Extremely high value for frontend/runtime debugging and inspection | Chrome DevTools Protocol, remote debugging HTTP endpoints | Static toolset | Implemented in this branch |
+| P1 | Flutter | Strong value for app UI and project tooling, first adapter already in place | Flutter CLI, Dart runtime, DevTools/Inspector ecosystem | Dynamic generated tools implemented | Implemented in this branch |
+| P1 | Blender | Rich scene/object/material graph and strong official Python API | Blender command line, `bpy`, `bpy.ops`, render API | Static toolset | Implemented in this branch |
+| P1 | Houdini | Node graph and procedural pipeline are ideal for host agents | HOM `hou`, `hython`, Python panels | Static toolset | Implemented in this branch |
+| P1 | Unreal | Strong editor automation value and mature official scripting surface | Unreal Python API, editor automation, Remote Control API | Planned next batch | Implemented in this branch |
+| P1 | Figma | High-value design system and file graph workflows with official remote APIs | Figma REST API, comments, variables, file/node/image endpoints | Static toolset | Implemented in this branch |
+| P0 | VS Code | Broadest IDE reach, strong official host APIs, and high leverage for code workflows | VS Code Extension API, language services, tasks, commands | Dynamic generated tools implemented | Implemented in this branch |
+| P0 | JetBrains | High-value IDE context and mature PSI/project model across multiple products | IntelliJ Platform SDK, PSI, project model, run configurations | Dynamic generated tools implemented | Implemented in this branch |
+| P1 | Godot | Good editor plugin surface and scene/resource workflows | `EditorPlugin`, editor scripting, headless CLI | Planned next batch | Implemented in this branch |
+| P1 | Maya | High-value DCC workflows with mature scripting | Maya Python API, Script Editor, `mayapy` | Static toolset | Implemented in this branch |
+| P1 | Rhino | Valuable CAD and parametric modeling context with official cross-platform plugin SDK | RhinoCommon, Rhino plugin load model, Rhino document APIs | Static toolset | Implemented in this branch |
+| P1 | Photoshop | High-value creative workflows with modern official plugin APIs | Photoshop UXP, Photoshop DOM, `batchPlay`, UXP file APIs | Dynamic generated tools implemented | Implemented in this branch |
+| P1 | Cocos Creator | Editor tooling can support a generated script host if a stable extension dispatcher owns the runtime | Cocos Creator extensions, messages, asset database, reload flow | Planned next batch | Planned |
+| P2 | Android | Valuable host state through SDK, device, and build tooling | ADB, Gradle, Emulator tools | Static toolset | Implemented in this branch |
+| P2 | Revit | Very high BIM value with strong but main-thread-constrained official APIs | Revit API, `.addin` manifests, `ExternalEvent` | Static toolset | Implemented in this branch |
+| P2 | WPF | Valuable desktop UI/runtime tree and XAML workflows | `.sln`, XAML, `dotnet`, `msbuild` | Static toolset | Implemented in this branch |
+| P2 | iOS | High value with official but more constrained toolchain surfaces | `xcodebuild`, `xcrun simctl`, Simulator logs | Static toolset | Implemented in this branch |
+
+## Dynamic tool rollout
+
+The repository now has two adapter categories:
+
+- Dynamic adapters: `Unity`, `Flutter`, `VS Code`, `JetBrains`, and `Photoshop`
+- Static adapters: every other currently implemented platform
+
+The next dynamic batch is prioritized as:
+
+1. `Unreal`
+2. `Godot`
+3. `Cocos Creator`
+
+Implementation rules for that batch:
+
+- `Unreal` should generate Python tool files under the project-owned state directory and execute them through the official Unreal Python surface.
+- `Godot` should generate GDScript tools inside the adapter-owned addon/runtime area and dispatch them through a stable editor/headless bridge.
+- `Cocos Creator` should not generate whole new extensions; it should own one stable extension host that dispatches generated JavaScript tools from a managed directory.
 
 ## Implementation policy
 
@@ -77,5 +108,7 @@ Priority combines:
 ## Validation status
 
 - Browser has been runtime-validated in this environment against a locally launched Chrome instance.
+- VS Code extension source and Photoshop companion plus UXP plugin source have passed syntax checks in this environment.
 - Blender, Houdini, Unreal, Godot, Maya, Figma, Android, WPF, and iOS adapters have passed syntax checks plus local service `/health` validation in this branch.
-- Host-runtime tool execution for Blender, Houdini, Unreal, Godot, Maya, Android, WPF, and iOS still depends on those host applications or SDKs being present on the target machine.
+- JetBrains, Rhino, and Revit adapters have source implementations in this branch but were not built here because this workstation lacks the required IDE or .NET/Revit host SDK runtime.
+- Host-runtime tool execution for Blender, Houdini, Unreal, Godot, Maya, Android, WPF, iOS, Rhino, Revit, Photoshop, VS Code, and JetBrains still depends on those host applications or SDKs being present on the target machine.

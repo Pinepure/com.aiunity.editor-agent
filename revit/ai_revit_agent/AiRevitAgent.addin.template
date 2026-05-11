@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>AI Revit Agent</Name>
+    <Assembly>C:\Path\To\AiRevitAgent.dll</Assembly>
+    <AddInId>0A1EAC1C-4F2B-4E56-9E4E-8EC7C2E3A14D</AddInId>
+    <FullClassName>AiPlatform.RevitAgent.AiRevitAgentApplication</FullClassName>
+    <VendorId>AIPA</VendorId>
+    <VendorDescription>AI Platform Agent Framework Revit adapter.</VendorDescription>
+  </AddIn>
+</RevitAddIns>
