@@ -14,6 +14,7 @@ namespace AiUnity.EditorAgent
             int count = Math.Min(safePageSize, items.Count);
             bool hasMore = count < items.Count;
             string handleId = hasMore ? AiResultHandleStore.CreateJsonItemsHandle(sourceToolId, fieldName, items, summaryJson) : string.Empty;
+            string worksetId = items.Count > 0 ? AiWorksetStore.CreateJsonItemsWorkset("items", sourceToolId, fieldName, summaryJson, items) : string.Empty;
 
             StringBuilder sb = new StringBuilder();
             sb.Append('{');
@@ -25,6 +26,10 @@ namespace AiUnity.EditorAgent
             if (!string.IsNullOrEmpty(handleId))
             {
                 sb.Append(',').Append("\"resultHandle\":").Append(AiJson.Quote(handleId));
+            }
+            if (!string.IsNullOrEmpty(worksetId))
+            {
+                sb.Append(',').Append("\"worksetId\":").Append(AiJson.Quote(worksetId));
             }
             sb.Append(',').Append(AiJson.Quote(string.IsNullOrEmpty(fieldName) ? "items" : fieldName)).Append(':').Append('[');
             for (int i = 0; i < count; i++)

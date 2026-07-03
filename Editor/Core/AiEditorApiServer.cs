@@ -120,9 +120,34 @@ namespace AiUnity.EditorAgent
                     }
 
                     currentToken = AiEditorAgentSettings.EnsureToken();
-                    listener = new HttpListener();
-                    listener.Prefixes.Add(AiEditorAgentSettings.Prefix);
-                    listener.Start();
+                    string startedPrefix = string.Empty;
+                    bool started = false;
+                    Exception lastStartException = null;
+                    for (int attempt = 0; attempt < 3; attempt++)
+                    {
+                        AiEndpointInfo endpoint = attempt == 0 ? AiEndpointRegistry.GetCurrentOrCreate() : AiEndpointRegistry.RefreshForNewPort();
+                        startedPrefix = (endpoint == null ? AiEditorAgentSettings.ServerUrl : endpoint.baseUrl) + "/";
+
+                        listener = new HttpListener();
+                        listener.Prefixes.Add(startedPrefix);
+
+                        try
+                        {
+                            listener.Start();
+                            started = true;
+                            break;
+                        }
+                        catch (Exception e)
+                        {
+                            lastStartException = e;
+                            SafeCloseListener();
+                        }
+                    }
+
+                    if (!started)
+                    {
+                        throw lastStartException ?? new Exception("Failed to bind a local HTTP listener.");
+                    }
 
                     listenerThread = new Thread(ListenLoop);
                     listenerThread.IsBackground = true;
@@ -130,7 +155,7 @@ namespace AiUnity.EditorAgent
                     listenerThread.Start();
 
                     lastError = string.Empty;
-                    AiEditorAgentState.Info("Service started at " + AiEditorAgentSettings.Prefix);
+                    AiEditorAgentState.Info("Service started at " + startedPrefix);
                     return true;
                 }
                 catch (Exception e)
@@ -258,7 +283,7 @@ namespace AiUnity.EditorAgent
 
                 if (!IsAuthorized(context.Request))
                 {
-                    Send(context, 401, AiJson.Error("Unauthorized. Provide X-Unity-Ai-Token."));
+                    Send(context, 401, AiJson.Error("Unauthorized. Provide " + AiEditorAgentPaths.PrimaryTokenHeader + " or " + AiEditorAgentPaths.LegacyTokenHeader + "."));
                     return;
                 }
 
@@ -369,7 +394,11 @@ namespace AiUnity.EditorAgent
             if (!requireTokenCached) return true;
             string expected = Token;
             if (string.IsNullOrEmpty(expected)) return false;
-            string provided = request.Headers["X-Unity-Ai-Token"];
+            string provided = request.Headers[AiEditorAgentPaths.PrimaryTokenHeader];
+            if (string.IsNullOrEmpty(provided))
+            {
+                provided = request.Headers[AiEditorAgentPaths.LegacyTokenHeader];
+            }
             return string.Equals(provided, expected, StringComparison.Ordinal);
         }
 
@@ -587,7 +616,7 @@ namespace AiUnity.EditorAgent
         {
             response.Headers["Access-Control-Allow-Origin"] = "http://127.0.0.1";
             response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-Unity-Ai-Token";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, " + AiEditorAgentPaths.PrimaryTokenHeader + ", " + AiEditorAgentPaths.LegacyTokenHeader;
             response.Headers["Cache-Control"] = "no-store";
         }
     }

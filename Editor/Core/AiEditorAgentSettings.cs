@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Globalization;
 using System.IO;
 using UnityEditor;
 
@@ -8,7 +9,11 @@ namespace AiUnity.EditorAgent
     internal static class AiEditorAgentSettings
     {
         private const string KeyPrefix = "AiUnity.EditorAgent.";
-        private const int DefaultPort = 18777;
+        private const string TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff";
+
+        public const int WorksetTtlSeconds = 1800;
+        public const int SnapshotTtlSeconds = 1800;
+        public const int MaxBatchSteps = 24;
 
         public static bool AutoStart
         {
@@ -24,8 +29,11 @@ namespace AiUnity.EditorAgent
 
         public static int Port
         {
-            get { return Math.Max(1024, Math.Min(65535, EditorPrefs.GetInt(KeyPrefix + "Port", DefaultPort))); }
-            set { EditorPrefs.SetInt(KeyPrefix + "Port", Math.Max(1024, Math.Min(65535, value))); }
+            get
+            {
+                AiEndpointInfo endpoint = AiEndpointRegistry.GetCurrentOrCreate();
+                return endpoint == null ? 18777 : endpoint.port;
+            }
         }
 
         public static int ToolTimeoutMs
@@ -48,7 +56,11 @@ namespace AiUnity.EditorAgent
 
         public static string ServerUrl
         {
-            get { return "http://127.0.0.1:" + Port; }
+            get
+            {
+                AiEndpointInfo endpoint = AiEndpointRegistry.GetCurrentOrCreate();
+                return endpoint == null ? "http://127.0.0.1:18777" : endpoint.baseUrl;
+            }
         }
 
         public static string Prefix
@@ -58,7 +70,7 @@ namespace AiUnity.EditorAgent
 
         public static string EnsureToken()
         {
-            AiEditorAgentPaths.EnsureLibraryFolder();
+            AiEditorAgentPaths.EnsureStateFolders();
             string tokenPath = AiEditorAgentPaths.TokenPath;
             if (File.Exists(tokenPath))
             {
@@ -73,7 +85,7 @@ namespace AiUnity.EditorAgent
 
         public static string RegenerateToken()
         {
-            AiEditorAgentPaths.EnsureLibraryFolder();
+            AiEditorAgentPaths.EnsureStateFolders();
             string token = Guid.NewGuid().ToString("N");
             File.WriteAllText(AiEditorAgentPaths.TokenPath, token);
             return token;
@@ -97,6 +109,34 @@ namespace AiUnity.EditorAgent
             if (info == null) return false;
             if (info.requiresConfirmation) return true;
             return info.danger == "high" && ConfirmHighRiskTools;
+        }
+
+        public static string FormatTimestamp(DateTime value)
+        {
+            return value.ToString(TimestampFormat, CultureInfo.InvariantCulture);
+        }
+
+        public static bool TryParseTimestamp(string value, out DateTime result)
+        {
+            if (DateTime.TryParseExact(
+                value ?? string.Empty,
+                TimestampFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeLocal,
+                out result))
+            {
+                return true;
+            }
+
+            return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out result);
+        }
+
+        public static bool IsTimestampExpired(string value, int ttlSeconds)
+        {
+            if (ttlSeconds <= 0) return false;
+            DateTime parsed;
+            if (!TryParseTimestamp(value, out parsed)) return false;
+            return (DateTime.Now - parsed).TotalSeconds > ttlSeconds;
         }
     }
 }

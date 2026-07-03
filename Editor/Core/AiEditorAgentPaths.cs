@@ -9,11 +9,17 @@ namespace AiUnity.EditorAgent
 {
     internal static class AiEditorAgentPaths
     {
+        public const string FrameworkName = "AI Platform Agent Framework";
         public const string PackageName = "com.aiunity.editor-agent";
-        public const string ServiceVersion = "0.2.0";
+        public const string PlatformId = "unity";
+        public const string ServiceVersion = "0.3.0";
+        public const string ServiceId = "aiunity.editor-agent";
         public const string ProtocolVersion = "2.0";
+        public const string PrimaryTokenHeader = "X-AI-Agent-Token";
+        public const string LegacyTokenHeader = "X-Unity-Ai-Token";
         public const string GeneratedToolsFolder = "Assets/Editor/AiUnityEditorAgent/GeneratedTools";
         public const string LibraryFolderRelative = "Library/AiUnityEditorAgent";
+        public const string StateFolderRelative = LibraryFolderRelative + "/State";
 
         public static string ProjectRoot
         {
@@ -28,6 +34,31 @@ namespace AiUnity.EditorAgent
         public static string TokenPath
         {
             get { return Path.Combine(LibraryFolderAbsolute, "token.txt").Replace('\\', '/'); }
+        }
+
+        public static string EndpointPath
+        {
+            get { return Path.Combine(LibraryFolderAbsolute, "endpoint.json").Replace('\\', '/'); }
+        }
+
+        public static string StateFolderAbsolute
+        {
+            get { return Path.Combine(ProjectRoot, StateFolderRelative).Replace('\\', '/'); }
+        }
+
+        public static string WorksetsFolderAbsolute
+        {
+            get { return Path.Combine(StateFolderAbsolute, "worksets").Replace('\\', '/'); }
+        }
+
+        public static string SnapshotsFolderAbsolute
+        {
+            get { return Path.Combine(StateFolderAbsolute, "snapshots").Replace('\\', '/'); }
+        }
+
+        public static string RecipesFolderAbsolute
+        {
+            get { return Path.Combine(StateFolderAbsolute, "recipes").Replace('\\', '/'); }
         }
 
         public static string GeneratedToolsFolderAbsolute
@@ -82,6 +113,15 @@ namespace AiUnity.EditorAgent
             }
         }
 
+        public static void EnsureStateFolders()
+        {
+            EnsureLibraryFolder();
+            EnsureFolder(StateFolderAbsolute);
+            EnsureFolder(WorksetsFolderAbsolute);
+            EnsureFolder(SnapshotsFolderAbsolute);
+            EnsureFolder(RecipesFolderAbsolute);
+        }
+
         public static string NormalizeAssetPath(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath)) return string.Empty;
@@ -126,6 +166,15 @@ namespace AiUnity.EditorAgent
             }
 
             return string.Empty;
+        }
+
+        private static void EnsureFolder(string absolutePath)
+        {
+            if (string.IsNullOrEmpty(absolutePath)) return;
+            if (!Directory.Exists(absolutePath))
+            {
+                Directory.CreateDirectory(absolutePath);
+            }
         }
     }
 }

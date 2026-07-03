@@ -29,7 +29,6 @@ namespace AiUnity.EditorAgent
         private string selectedToolId = string.Empty;
         private string toolArgsJson = "{}";
         private string toolResultJson = string.Empty;
-        private int settingsPort;
         private int settingsTimeout;
         private bool settingsAutoStart;
         private bool settingsRequireToken;
@@ -180,6 +179,7 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Connection", Styles.sectionTitle);
+            KeyValue("Endpoint file", AiEditorAgentPaths.EndpointPath);
             KeyValue("Base URL", AiEditorAgentSettings.ServerUrl);
             KeyValue("Manifest summary", AiEditorAgentSettings.ServerUrl + "/manifest");
             KeyValue("Manifest full", AiEditorAgentSettings.ServerUrl + "/manifest/full");
@@ -192,20 +192,21 @@ namespace AiUnity.EditorAgent
             if (GUILayout.Button("Copy Token", GUILayout.Width(110))) Copy(AiEditorApiServer.Token);
             if (GUILayout.Button("Copy Manifest URL", GUILayout.Width(150))) Copy(AiEditorAgentSettings.ServerUrl + "/manifest");
             if (GUILayout.Button("Reveal Token", GUILayout.Width(110))) RevealFile(AiEditorAgentPaths.TokenPath);
+            if (GUILayout.Button("Reveal Endpoint", GUILayout.Width(130))) RevealFile(AiEditorAgentPaths.EndpointPath);
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Recommended AI Flow", Styles.sectionTitle);
-            GUILayout.Label("1. GET /health", Styles.body);
+            GUILayout.Label("1. Read endpoint.json and token.txt, then call GET /health", Styles.body);
             GUILayout.Label("2. Reuse cached capabilities while manifestHash is unchanged", Styles.body);
             GUILayout.Label("3. POST /manifest/search or GET /manifest/bundle/{id}", Styles.body);
             GUILayout.Label("4. POST /tool/describe_many before unfamiliar calls", Styles.body);
-            GUILayout.Label("5. Call existing tools and page large results through /result/{handleId}", Styles.body);
-            GUILayout.Label("6. If missing, install a generated tool with tool.upsert_script", Styles.body);
-            GUILayout.Label("7. Wait for compile.status.isCompiling == false", Styles.body);
-            GUILayout.Label("8. Refresh search or GET /manifest/full only as fallback", Styles.body);
+            GUILayout.Label("5. If missing, install the smallest generated tool first", Styles.body);
+            GUILayout.Label("6. Capture a baseline before risky writes", Styles.body);
+            GUILayout.Label("7. Prefer batch.run, worksets, and snapshots for multi-step tasks", Styles.body);
+            GUILayout.Label("8. Finish with validator.run and record successful workflows", Styles.body);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
 
@@ -438,7 +439,7 @@ namespace AiUnity.EditorAgent
         private void DrawHeroFooter(Rect rect, long peakDurationMs, AiToolCallEntry latestCall)
         {
             float x = rect.x;
-            x = DrawFooterChip(new Rect(x, rect.y, 180f, rect.height), "Endpoint", "127.0.0.1:18777", Styles.blue);
+            x = DrawFooterChip(new Rect(x, rect.y, 240f, rect.height), "Endpoint", AiEditorAgentSettings.ServerUrl.Replace("http://", string.Empty), Styles.blue);
             if (latestCall != null)
             {
                 x = DrawFooterChip(new Rect(x + 8f, rect.y, 240f, rect.height), "Latest", ShortenToolId(latestCall.toolId) + "  " + FormatDuration(latestCall.durationMs), latestCall.ok ? Styles.teal : Styles.red);
@@ -683,7 +684,7 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Service Settings", Styles.sectionTitle);
             settingsAutoStart = EditorGUILayout.ToggleLeft("Auto-start service when Unity loads or scripts reload", settingsAutoStart);
-            settingsRequireToken = EditorGUILayout.ToggleLeft("Require X-Unity-Ai-Token for protected endpoints", settingsRequireToken);
+            settingsRequireToken = EditorGUILayout.ToggleLeft("Require token header (X-AI-Agent-Token or X-Unity-Ai-Token) for protected endpoints", settingsRequireToken);
             settingsFullAccess = EditorGUILayout.ToggleLeft("Enable full access mode (skip all tool confirmation dialogs)", settingsFullAccess);
             using (new EditorGUI.DisabledScope(settingsFullAccess))
             {
@@ -693,8 +694,11 @@ namespace AiUnity.EditorAgent
             {
                 EditorGUILayout.HelpBox("Full access mode bypasses all tool confirmation dialogs, including tools that explicitly require confirmation. Token checks and tool-level path restrictions still apply.", MessageType.Warning);
             }
-            settingsPort = EditorGUILayout.IntField("Port", settingsPort);
             settingsTimeout = EditorGUILayout.IntField("Tool timeout ms", settingsTimeout);
+            KeyValue("Host", "127.0.0.1");
+            KeyValue("Port", AiEditorAgentSettings.Port.ToString(CultureInfo.InvariantCulture));
+            KeyValue("Endpoint file", AiEditorAgentPaths.EndpointPath);
+            EditorGUILayout.HelpBox("The service now chooses a free local port automatically and persists it to endpoint.json. Clients should read endpoint.json instead of hardcoding a port.", MessageType.Info);
 
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Save Settings", GUILayout.Width(120))) SaveSettingsFromFields();
@@ -712,6 +716,7 @@ namespace AiUnity.EditorAgent
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             GUILayout.Label("Security", Styles.sectionTitle);
             KeyValue("Token path", AiEditorAgentPaths.TokenPath);
+            KeyValue("Endpoint path", AiEditorAgentPaths.EndpointPath);
             KeyValue("Generated tools folder", AiEditorAgentPaths.GeneratedToolsFolder);
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Copy Token", GUILayout.Width(110))) Copy(AiEditorApiServer.Token);
@@ -723,6 +728,7 @@ namespace AiUnity.EditorAgent
                 }
             }
             if (GUILayout.Button("Reveal Token", GUILayout.Width(110))) RevealFile(AiEditorAgentPaths.TokenPath);
+            if (GUILayout.Button("Reveal Endpoint", GUILayout.Width(130))) RevealFile(AiEditorAgentPaths.EndpointPath);
             if (GUILayout.Button("Reveal Generated Tools", GUILayout.Width(170)))
             {
                 AiEditorAgentPaths.EnsureGeneratedToolsFolder();
@@ -882,7 +888,6 @@ namespace AiUnity.EditorAgent
 
         private void LoadSettingsToFields()
         {
-            settingsPort = AiEditorAgentSettings.Port;
             settingsTimeout = AiEditorAgentSettings.ToolTimeoutMs;
             settingsAutoStart = AiEditorAgentSettings.AutoStart;
             settingsRequireToken = AiEditorAgentSettings.RequireToken;
@@ -892,7 +897,6 @@ namespace AiUnity.EditorAgent
 
         private void SaveSettingsFromFields()
         {
-            AiEditorAgentSettings.Port = settingsPort;
             AiEditorAgentSettings.ToolTimeoutMs = settingsTimeout;
             AiEditorAgentSettings.AutoStart = settingsAutoStart;
             AiEditorAgentSettings.RequireToken = settingsRequireToken;
@@ -904,7 +908,7 @@ namespace AiUnity.EditorAgent
 
         private void CopyCurl(string toolId, string body)
         {
-            string curl = "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -H \"X-Unity-Ai-Token: <TOKEN>\" \\\n  -d '" + (string.IsNullOrWhiteSpace(body) ? "{}" : body.Replace("'", "'\\''")) + "' \\\n  " + AiEditorAgentSettings.ServerUrl + "/call/" + toolId;
+            string curl = "curl -X POST \\\n  -H \"Content-Type: application/json\" \\\n  -H \"" + AiEditorAgentPaths.PrimaryTokenHeader + ": <TOKEN>\" \\\n  -d '" + (string.IsNullOrWhiteSpace(body) ? "{}" : body.Replace("'", "'\\''")) + "' \\\n  " + AiEditorAgentSettings.ServerUrl + "/call/" + toolId;
             Copy(curl);
         }
 

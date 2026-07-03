@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Added workflow recipe storage, workset persistence, batch execution, endpoint registry, and snapshot/state hashing utilities for faster repeatable task execution.
+- Added validation, context, git, workflow, batch, and workset tool groups so agents can plan, execute, and verify Unity changes with less token overhead.
+- Added dynamic endpoint persistence and local state files for token, port, recipes, worksets, snapshots, and validation artifacts under the Unity agent library path.
+- Updated service guidance and runtime behavior to support stronger validation-first and automation-first Unity editing flows.
+
 ## 0.2.0
 
 - Added protocol-level optimized discovery with `manifestHash`, lightweight `/manifest`, `/manifest/full`, `/manifest/search`, `/manifest/bundles`, `/tool/describe_many`, and `/agent/brief`.

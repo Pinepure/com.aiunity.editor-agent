@@ -171,16 +171,33 @@ namespace AiUnity.EditorAgent
         {
             string token = AiEditorApiServer.Token;
             string masked = string.IsNullOrEmpty(token) || token.Length < 8 ? "" : token.Substring(0, 4) + "..." + token.Substring(token.Length - 4);
+            AiEndpointInfo endpoint = AiEndpointRegistry.GetCurrentOrCreate();
             return "{"
+                + "\"framework\":" + AiJson.Quote(AiEditorAgentPaths.FrameworkName) + ","
+                + "\"serviceId\":" + AiJson.Quote(AiEditorAgentPaths.ServiceId) + ","
+                + "\"platformId\":" + AiJson.Quote(AiEditorAgentPaths.PlatformId) + ","
                 + "\"autoStart\":" + AiJson.Bool(AiEditorAgentSettings.AutoStart) + ","
                 + "\"requireToken\":" + AiJson.Bool(AiEditorAgentSettings.RequireToken) + ","
                 + "\"confirmHighRiskTools\":" + AiJson.Bool(AiEditorAgentSettings.ConfirmHighRiskTools) + ","
                 + "\"fullAccessEnabled\":" + AiJson.Bool(AiEditorAgentSettings.FullAccessEnabled) + ","
+                + "\"acceptedTokenHeaders\":[" + AiJson.Quote(AiEditorAgentPaths.PrimaryTokenHeader) + "," + AiJson.Quote(AiEditorAgentPaths.LegacyTokenHeader) + "],"
+                + "\"supportsDynamicToolRegistration\":true,"
+                + "\"supportsWorksets\":true,"
+                + "\"supportsBatchCalls\":true,"
+                + "\"supportsContextSnapshots\":true,"
+                + "\"supportsValidators\":true,"
+                + "\"host\":" + AiJson.Quote(endpoint == null ? "127.0.0.1" : endpoint.host) + ","
                 + "\"port\":" + AiJson.Number(AiEditorAgentSettings.Port) + ","
                 + "\"serverUrl\":" + AiJson.Quote(AiEditorAgentSettings.ServerUrl) + ","
+                + "\"endpointPath\":" + AiJson.Quote(AiEditorAgentPaths.EndpointPath) + ","
                 + "\"tokenPath\":" + AiJson.Quote(AiEditorAgentPaths.TokenPath) + ","
                 + "\"tokenPreview\":" + AiJson.Quote(masked) + ","
-                + "\"generatedToolsFolder\":" + AiJson.Quote(AiEditorAgentPaths.GeneratedToolsFolder)
+                + "\"generatedToolsFolder\":" + AiJson.Quote(AiEditorAgentPaths.GeneratedToolsFolder) + ","
+                + "\"stateFolder\":" + AiJson.Quote(AiEditorAgentPaths.StateFolderAbsolute) + ","
+                + "\"worksetTtlSeconds\":" + AiJson.Number(AiEditorAgentSettings.WorksetTtlSeconds) + ","
+                + "\"snapshotTtlSeconds\":" + AiJson.Number(AiEditorAgentSettings.SnapshotTtlSeconds) + ","
+                + "\"maxBatchSteps\":" + AiJson.Number(AiEditorAgentSettings.MaxBatchSteps) + ","
+                + "\"validatorIds\":" + AiJson.StringArray(new[] { "compile.no_new_errors", "prefab.no_missing_references", "scene.no_missing_scripts", "generated_tool.compiles", "git.diff_scope" })
                 + "}";
         }
 

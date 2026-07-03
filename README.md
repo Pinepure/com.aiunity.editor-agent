@@ -2,9 +2,24 @@
 
 AI Unity Editor Agent 是一个运行在 Unity Editor 内部的、本地的、可发现且可扩展的 AI 工具运行层。它的目标不是单纯给 AI 暴露几个 Unity 接口，而是让 AI 真正进入 Unity 编辑器的工作上下文，具备发现能力、调用能力和自扩展能力。
 
+当前仓库已经进一步抽象成 `AI Platform Agent Framework`。其中：
+
+- `unity/com.aiunity.editor-agent/` 是 Unity 适配层，也就是当前的 AI Unity Editor Agent。
+- `docs/framework/` 提供平台无关的协议与架构说明。
+- `flutter/ai_flutter_agent/` 提供首个非 Unity 平台适配层，用同一套 discovery/call/result-handle 协议服务 Flutter 项目。
+
+如果后续拆成独立 Unity 仓库，运行时最小接入只需要保留 `unity/com.aiunity.editor-agent/` 这一份 Unity package，不需要携带其他平台目录。
+
 在普通的原生开发或网页开发场景中，AI 往往已经可以比较完整地阅读代码、目录和文本资源；但在 Unity 这样的游戏创作引擎里，很多关键上下文并不直接存在于源码中，而是存在于 Scene、Prefab、AssetDatabase、Selection、Console、编译状态、Importer 以及各种 Editor API 里。通用 AI 即使能看见项目文件，也往往只能看到表层，难以真正理解 Unity 项目的实时状态，更难直接执行引擎内部操作。
 
-AI Unity Editor Agent 的价值就在于，它为 AI 和 Unity 之间建立了一层真正可执行的桥梁。
+AI Unity Editor Agent 的价值就在于，它为 AI 和 Unity 之间建立了一层真正可执行的桥梁；而现在，这套桥梁也被整理成了可被其他平台复用的框架模式。
+
+## 仓库结构
+
+- 共享框架说明：仓库根目录下的 `docs/framework/README.md`
+- 共享协议说明：仓库根目录下的 `docs/framework/AGENT_PROTOCOL.md`
+- Unity 适配层：仓库根目录下的 `unity/com.aiunity.editor-agent/`
+- Flutter 适配层：仓库根目录下的 `flutter/ai_flutter_agent/`
 
 ## 产品定位
 
@@ -160,7 +175,7 @@ AI Unity Editor Agent 的不同之处在于，它不是只让 AI “为 Unity �
 为了让 AI 在 Unity 中可用，同时保持可控性，当前默认安全策略包括：
 
 - 服务默认只监听 `127.0.0.1`。
-- 默认要求通过 `X-Unity-Ai-Token` 进行访问认证。
+- 默认要求通过 `X-AI-Agent-Token` 进行访问认证，同时继续兼容 `X-Unity-Ai-Token`。
 - 高风险工具支持 Unity Editor 内确认弹窗。
 - AI 生成的工具脚本被限制在 `Assets/Editor/AiUnityEditorAgent/GeneratedTools/`。
 - 工具清单由 `[AiTool]` 方法自动发现生成，而不是手工维护。
@@ -170,13 +185,14 @@ AI Unity Editor Agent 的不同之处在于，它不是只让 AI “为 Unity �
 1. 下载并解压该包。
 2. 在 Unity 中打开 **Window > Package Manager**。
 3. 点击 **+ > Add package from disk...**。
-4. 选择 `com.aiunity.editor-agent/package.json`。
+4. 如果你直接使用这个 monorepo，选择 `unity/com.aiunity.editor-agent/package.json`；如果你单独分发 Unity 包，则选择该包根目录下的 `package.json`。
 5. 打开 **Tools > AI Editor Agent > Control Center**。
 
 ## 默认服务信息
 
-- 默认地址：`http://127.0.0.1:18777`
+- 默认地址：启动时自动选择一个本地空闲端口，并写入 `endpoint.json`
 - Token 文件：`<ProjectRoot>/Library/AiUnityEditorAgent/token.txt`
+- Endpoint 文件：`<ProjectRoot>/Library/AiUnityEditorAgent/endpoint.json`
 - 健康与 discovery 元信息：`GET /health`
 - 轻量工具清单：`GET /manifest`
 - 全量工具清单兜底：`GET /manifest/full`
@@ -188,11 +204,17 @@ AI Unity Editor Agent 的不同之处在于，它不是只让 AI “为 Unity �
 - Agent 简版协议：`GET /agent/brief`
 - Agent 完整操作手册：`GET /agent` 或包内 `AGENT.md`
 
-除 `/health` 外，默认所有请求都要求提供 `X-Unity-Ai-Token`。
+建议 AI 客户端先读取 `token.txt` 和 `endpoint.json`，再发起连接。除 `/health` 外，默认所有请求都要求提供 `X-AI-Agent-Token`，并兼容旧的 `X-Unity-Ai-Token`。
 
 ## 面向 AI 的协议说明
 
-`AGENT.md` 是内置的 AI 操作手册，定义了推荐的调用顺序、manifest 约定、工具实现约定以及基本安全规则。对于需要让外部 AI Agent 接入 Unity 的场景，`AGENT.md` 应视为运行协议的一部分，而不是普通补充文档。
+`AGENT.md` 是 Unity 适配层内置的 AI 操作手册，定义了推荐的调用顺序、manifest 约定、工具实现约定以及基本安全规则。对于需要让外部 AI Agent 接入 Unity 的场景，`AGENT.md` 应视为运行协议的一部分，而不是普通补充文档。
+
+如果需要看平台无关的抽象层，请直接查看：
+
+- `docs/framework/README.md`
+- `docs/framework/AGENT_PROTOCOL.md`
+- `flutter/ai_flutter_agent/README.md`
 
 ## 总结
 

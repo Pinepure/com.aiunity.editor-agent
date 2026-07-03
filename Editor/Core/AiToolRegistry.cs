@@ -191,7 +191,13 @@ namespace AiUnity.EditorAgent
             {
                 id = "service-diagnostics",
                 description = "Health checks, manifest fallback access, compile diagnostics, logs, and service configuration.",
-                prefixes = new[] { "system.", "service.", "manifest.", "compile.", "console.", "agent." }
+                prefixes = new[] { "system.", "service.", "manifest.", "compile.", "console.", "agent.", "git." }
+            },
+            new AiManifestBundleDefinition
+            {
+                id = "workflow-automation",
+                description = "Batch execution, worksets, context snapshots, validation, and successful workflow reuse.",
+                prefixes = new[] { "batch.", "workset.", "context.", "validator.", "workflow." }
             }
         };
 

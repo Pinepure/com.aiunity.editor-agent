@@ -2,6 +2,8 @@
 
 This document is the built-in operating manual for AI agents that control Unity through the AI Unity Editor Agent package.
 
+AI Unity Editor Agent is the Unity adapter of the shared AI Platform Agent Framework.
+
 The agent must treat `manifestHash` as the capability cache key and must prefer search, bundle, describe, and paged result flows over repeatedly loading the full manifest.
 
 ## 1. Connection
@@ -9,16 +11,23 @@ The agent must treat `manifestHash` as the capability cache key and must prefer 
 Default base URL:
 
 ```text
-http://127.0.0.1:18777
+Read <ProjectRoot>/Library/AiUnityEditorAgent/endpoint.json for the current host and port.
 ```
 
 Default token file:
 
 ```text
 <ProjectRoot>/Library/AiUnityEditorAgent/token.txt
+<ProjectRoot>/Library/AiUnityEditorAgent/endpoint.json
 ```
 
-Required request header unless disabled by the user in the Control Center:
+Primary request header unless disabled by the user in the Control Center:
+
+```http
+X-AI-Agent-Token: <token>
+```
+
+Backward-compatible legacy header:
 
 ```http
 X-Unity-Ai-Token: <token>
@@ -34,21 +43,21 @@ Lightweight manifest summary:
 
 ```http
 GET /manifest
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Full manifest fallback:
 
 ```http
 GET /manifest/full
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Manifest search:
 
 ```http
 POST /manifest/search
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {"query":"find prefab dependencies","limit":6}
@@ -59,14 +68,14 @@ Focused capability bundles:
 ```http
 GET /manifest/bundles
 GET /manifest/bundle/asset-analysis
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Describe exact tool schemas:
 
 ```http
 POST /tool/describe_many
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {"ids":["asset.find","asset.dependencies"]}
@@ -76,7 +85,7 @@ Call a tool:
 
 ```http
 POST /call/{toolId}
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 Content-Type: application/json
 
 {...tool arguments...}
@@ -86,36 +95,39 @@ Read next pages or text chunks from a result handle:
 
 ```http
 GET /result/{handleId}?offset=0&limit=20
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Read the concise brief:
 
 ```http
 GET /agent/brief
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 Read the full manual:
 
 ```http
 GET /agent
-X-Unity-Ai-Token: <token>
+X-AI-Agent-Token: <token>
 ```
 
 ## 2. Required AI workflow
 
 For every Unity task:
 
-1. Call `GET /health`.
-2. Cache the current `manifestHash`.
+1. Read `endpoint.json` and `token.txt`, then call `GET /health`.
+2. Cache the current `manifestHash` and `projectStateHash`.
 3. Reuse cached capability knowledge while `manifestHash` stays unchanged.
 4. Prefer `POST /manifest/search` or `GET /manifest/bundle/{id}` to narrow candidate tools.
 5. Call `POST /tool/describe_many` for exact schemas before using unfamiliar tools.
-6. Call the selected tool through `POST /call/{toolId}`.
-7. If a tool returns `resultHandle`, page additional data through `GET /result/{handleId}` instead of re-running the tool with larger limits.
-8. Use `GET /manifest/full` only when search, bundles, and describe-many are insufficient.
-9. If no suitable tool exists, generate a new Editor tool script with `tool.upsert_script`, wait for compile completion, then repeat discovery.
+6. For non-trivial or repeated goals, query `workflow.match_recipes` before planning from scratch.
+7. If no suitable tool exists, generate the smallest missing Editor tool with `tool.upsert_script`, wait for compile completion, then repeat discovery.
+8. For large result sets or multi-step tasks, prefer worksets, snapshots, and `batch.run` instead of many repeated small calls.
+9. Before risky write operations, capture a baseline with `validator.capture_baseline`.
+10. After writes, run `validator.run`, inspect Git summaries and validator scope fields when needed, and only then mark the task complete.
+11. After a validated reusable success, call `workflow.record_success`.
+12. Use `GET /manifest/full` only when search, bundles, and describe-many are insufficient.
 
 ## 3. Protocol priorities
 
@@ -185,7 +197,7 @@ Rules:
 ```json
 {
   "protocolVersion": "2.0",
-  "serviceVersion": "0.2.0",
+  "serviceVersion": "0.3.0",
   "manifestHash": "7c3d...",
   "toolCount": 35,
   "namespaces": [
@@ -274,6 +286,12 @@ GET /result/abcd1234?offset=20&limit=20
 
 Text readers such as `asset.read_text` may return chunked `content` plus `resultHandle`.
 
+`batch.run` placeholders target the wrapped step result object. Typical examples:
+
+1. `{{step1.result.result.path}}`
+2. `{{step2.result.result.resultHandle}}`
+3. `{{step3.ok}}`
+
 ## 8. Built-in high-value tools
 
 Common tools available in a fresh install:
@@ -348,7 +366,7 @@ TOKEN=$(cat Library/AiUnityEditorAgent/token.txt)
 Health:
 
 ```bash
-curl -H "X-Unity-Ai-Token: $TOKEN" http://127.0.0.1:18777/health
+curl -H "X-AI-Agent-Token: $TOKEN" <BASE_URL_FROM_ENDPOINT_JSON>/health
 ```
 
 Search candidate tools:
@@ -356,9 +374,9 @@ Search candidate tools:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"query":"find prefab dependencies","limit":6}' \
-  http://127.0.0.1:18777/manifest/search
+  <BASE_URL_FROM_ENDPOINT_JSON>/manifest/search
 ```
 
 Describe exact schemas:
@@ -366,9 +384,9 @@ Describe exact schemas:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"ids":["asset.find","asset.dependencies"]}' \
-  http://127.0.0.1:18777/tool/describe_many
+  <BASE_URL_FROM_ENDPOINT_JSON>/tool/describe_many
 ```
 
 Call asset search:
@@ -376,14 +394,14 @@ Call asset search:
 ```bash
 curl -X POST \
   -H "Content-Type: application/json" \
-  -H "X-Unity-Ai-Token: $TOKEN" \
+  -H "X-AI-Agent-Token: $TOKEN" \
   -d '{"filter":"t:Prefab","folders":["Assets"],"maxResults":100,"pageSize":20}' \
-  http://127.0.0.1:18777/call/asset.find
+  <BASE_URL_FROM_ENDPOINT_JSON>/call/asset.find
 ```
 
 Read the next page from a result handle:
 
 ```bash
-curl -H "X-Unity-Ai-Token: $TOKEN" \
-  "http://127.0.0.1:18777/result/<HANDLE>?offset=20&limit=20"
+curl -H "X-AI-Agent-Token: $TOKEN" \
+  "<BASE_URL_FROM_ENDPOINT_JSON>/result/<HANDLE>?offset=20&limit=20"
 ```
